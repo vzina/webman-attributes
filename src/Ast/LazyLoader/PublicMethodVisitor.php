@@ -1,0 +1,91 @@
+<?php
+/**
+ * PublicMethodVisitor.php
+ * PHP version 7
+ *
+ * @package openai-web
+ * @author  weijian.ye
+ * @contact yeweijian@eyugame.com
+ * @link    https://github.com/vzina
+ */
+declare (strict_types=1);
+
+namespace Vzina\Attributes\Ast\LazyLoader;
+
+use PhpParser\Modifiers;
+use PhpParser\Node;
+use PhpParser\Node\Expr\FuncCall;
+use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\Variable;
+use PhpParser\Node\Name;
+use PhpParser\Node\Scalar\MagicConst\Function_ as MagicConstFunction;
+use PhpParser\Node\Stmt\Class_;
+use PhpParser\Node\Stmt\ClassMethod;
+use PhpParser\Node\Stmt\Expression;
+use PhpParser\Node\Stmt\Interface_;
+use PhpParser\Node\Stmt\Return_;
+use PhpParser\NodeVisitorAbstract;
+
+class PublicMethodVisitor extends NodeVisitorAbstract
+{
+    /**
+     * All The nodes containing public methods.
+     *
+     * @var Node[]
+     */
+    public array $nodes = [];
+
+    private string $originalClassName;
+
+    /**
+     * @param Node\Stmt[] $stmts
+     */
+    public function __construct(private array $stmts, string $originalClassName)
+    {
+        if (! str_starts_with($originalClassName, '\\')) {
+            $originalClassName = '\\' . $originalClassName;
+        }
+        $this->originalClassName = $originalClassName;
+    }
+
+    public function enterNode(Node $node)
+    {
+        if ($node instanceof Interface_ || $node instanceof Class_) {
+            $node->stmts = $this->stmts;
+        }
+        if ($node instanceof ClassMethod) {
+            $methodCall = new MethodCall(
+                new Variable('this'),
+                '__call',
+                [
+                    new Node\Arg(new MagicConstFunction()),
+                    new Node\Arg(new FuncCall(new Name('func_get_args'))),
+                ]
+            );
+            $shouldReturn = true;
+            if ($node->getReturnType() && method_exists($node->getReturnType(), 'toString')) {
+                if ($node->getReturnType()->toString() === 'self') {
+                    $node->returnType = new Name($this->originalClassName);
+                }
+                if ($node->getReturnType()->toString() === 'void') {
+                    $shouldReturn = false;
+                    $methodCall = new Expression($methodCall);
+                }
+            }
+            $shouldReturn && $methodCall = new Return_($methodCall);
+            $node->stmts = [
+                $methodCall,
+            ];
+            $node->flags &= ~Modifiers::ABSTRACT;
+        }
+        return null;
+    }
+
+    public function leaveNode(Node $node)
+    {
+        if ($node instanceof ClassMethod && $node->isPublic() && ! $node->isMagic()) {
+            $this->nodes[] = $node;
+        }
+        return null;
+    }
+}
