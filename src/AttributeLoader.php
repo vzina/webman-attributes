@@ -32,8 +32,18 @@ use Webman\Config;
 
 class AttributeLoader
 {
-    public static function init(): void
+    protected static bool $enable = true;
+    public static function disable(): bool
     {
+        return static::$enable = false;
+    }
+
+    public static function init(bool $isForce = false): void
+    {
+        if (! $isForce && ! static::$enable) {
+            return;
+        }
+
         if (empty(Config::get())) {
             if (! method_exists(App::class, 'loadAllConfig')) {
                 return;
