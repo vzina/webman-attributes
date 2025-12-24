@@ -12,16 +12,13 @@ declare (strict_types=1);
 
 return [
     'scan_path' => [
-        app_path(),
+        app_path(), // 项目目录
         // 组件目录
         // base_path('vendor/xxx/src'),
         // base_path('plugin/xxx/src'),
     ],
     'class_map' => [],
-    'ignores' => [
-        // 忽略注解
-        // Vzina\Attributes\Attribute\Inject::class,
-    ],
+    'ignores' => [],
     'collectors' => [
         Vzina\Attributes\Collector\AttributeCollector::class,
         Vzina\Attributes\Collector\AspectCollector::class,
