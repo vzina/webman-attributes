@@ -3,30 +3,46 @@
  * attribute.php
  * PHP version 7
  *
- * @package openai-web
+ * @package attributes
  * @author  weijian.ye
- * @contact yeweijian@eyugame.com
+ * @contact yeweijian299@163.com
  * @link    https://github.com/vzina
  */
 declare (strict_types=1);
 
 return [
-    'scan_path' => [
+    'autoload' => true, // 是否自动加载
+    'scan_path' => [ // 扫描目录
         app_path(),
         // 组件目录
-        // base_path('vendor/xxx/src'),
-        // base_path('plugin/xxx/src'),
+        // base_path('vendor/vzina/attributes/src'),
+        // base_path('plugin/xxx'),
     ],
-    'class_map' => [],
+    'excludes' => [ // 排除部分扫描目录/文件
+        'config',
+        'Install.php',
+        'function.php',
+        'functions.php',
+    ],
+    'class_map' => [], // 类映射
     'ignores' => [
         // 忽略注解
         // Vzina\Attributes\Attribute\Inject::class,
     ],
-    'collectors' => [
+    'collectors' => [ // 注册收集器
         Vzina\Attributes\Collector\AttributeCollector::class,
         Vzina\Attributes\Collector\AspectCollector::class,
     ],
-    'aspects' => [
+    'aspects' => [ // 注册切面
         Vzina\Attributes\Attribute\InjectAspect::class,
+        Vzina\Attributes\Attribute\ValueAspect::class,
+    ],
+    'property_handlers' => [ // 注册属性注入逻辑
+        Vzina\Attributes\Attribute\InjectPropertyHandler::class,
+        Vzina\Attributes\Attribute\ValuePropertyHandler::class,
+    ],
+    'ast_visitors' => [ // 注册AST访问器
+        Vzina\Attributes\Ast\AstPropertyVisitor::class,
+        Vzina\Attributes\Ast\AstProxyCallVisitor::class,
     ],
 ];

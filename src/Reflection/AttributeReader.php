@@ -3,9 +3,9 @@
  * AttributeReader.php
  * PHP version 7
  *
- * @package openai-web
+ * @package attributes
  * @author  weijian.ye
- * @contact yeweijian@eyugame.com
+ * @contact yeweijian299@163.com
  * @link    https://github.com/vzina
  */
 declare (strict_types=1);
@@ -18,7 +18,7 @@ use ReflectionClassConstant;
 use ReflectionMethod;
 use ReflectionProperty;
 use Reflector;
-use Vzina\Attributes\AttributeLoader;
+use RuntimeException;
 
 class AttributeReader
 {
@@ -33,7 +33,7 @@ class AttributeReader
 
             /** @var ReflectionAttribute $attribute */
             if (! class_exists($attribute->getName())) {
-                AttributeLoader::logger()->debug(sprintf(
+                throw new RuntimeException(sprintf(
                     "No attribute class found for '%s' in %s",
                     $attribute->getName(),
                     match (true) {
@@ -44,7 +44,6 @@ class AttributeReader
                         default => '',
                     }
                 ));
-                continue;
             }
             $result[] = $attribute->newInstance();
         }

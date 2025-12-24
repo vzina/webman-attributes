@@ -3,46 +3,38 @@
  * ProxyManager.php
  * PHP version 7
  *
- * @package openai-web
+ * @package attributes
  * @author  weijian.ye
- * @contact yeweijian@eyugame.com
+ * @contact yeweijian299@163.com
  * @link    https://github.com/vzina
  */
 declare (strict_types=1);
 
 namespace Vzina\Attributes\Ast;
 
+use Vzina\Attributes\Attribute\Inject;
 use Vzina\Attributes\Collector\AspectCollector;
 use Vzina\Attributes\Collector\AttributeCollector;
 
 class ProxyManager
 {
-    /**
-     * 代理类映射（类名 => 代理文件路径）
-     */
+    // 懒加载代理类命名空间前缀
+    protected const LAZY_NS = 'LazyProxy\\';
+
+    // 代理类映射（原类名/懒加载类名 => 代理文件路径）
     private array $proxyClassMap = [];
 
-    /**
-     * 原始类映射（类名 => 原文件路径）
-     */
+    // 原始类映射（类名 => 原始文件路径）
     private array $originalClassMap;
 
-    /**
-     * 代理文件存放目录
-     */
+    // 代理文件存放目录
     private string $proxyDirectory;
 
-    public function __construct(
-        AstParser $astParser,
-        array $originalClassMap = [],
-        string $proxyDirectory = ''
-    ) {
+    public function __construct(array $originalClassMap = [], string $proxyDirectory = '')
+    {
         $this->originalClassMap = $originalClassMap;
         $this->proxyDirectory = $proxyDirectory;
-
-        // 初始化需要代理的类并生成代理文件
-        $needProxyClasses = $this->collectNeedProxyClasses();
-        $this->proxyClassMap = $this->generateProxyFiles($astParser, $needProxyClasses);
+        $this->proxyClassMap = $this->generateAllProxyFiles();
     }
 
     /**
@@ -67,48 +59,49 @@ class ProxyManager
     public function getAspectClasses(): array
     {
         $aspectProxyMap = [];
-        $classAspectRules = AspectCollector::get('classes', []);
-
-        foreach ($classAspectRules as $aspectClass => $rules) {
-            foreach ($rules as $rule) {
-                if (isset($this->proxyClassMap[$rule])) {
-                    $aspectProxyMap[$aspectClass][$rule] = $this->proxyClassMap[$rule];
+        foreach (AspectCollector::get('classes', []) as $aspectClass => $rules) {
+            foreach ($rules as $ruleClass) {
+                if (isset($this->proxyClassMap[$ruleClass])) {
+                    $aspectProxyMap[$aspectClass][$ruleClass] = $this->proxyClassMap[$ruleClass];
                 }
             }
         }
-
         return $aspectProxyMap;
     }
 
-    // ------------------------------ 核心逻辑：收集需要代理的类 ------------------------------
-
     /**
-     * 收集所有需要生成代理的类
+     * 生成所有代理文件（普通代理 + 懒加载代理）
      */
-    private function collectNeedProxyClasses(): array
+    private function generateAllProxyFiles(): array
     {
-        if (empty($this->originalClassMap)) {
-            return [];
+        $proxyFileMap = [];
+
+        // 生成普通代理文件
+        foreach ($this->collectNeedProxyClasses() as $className) {
+            $proxyFileMap[$className] = $this->generateProxyFile($className);
         }
 
-        // 1. 从切面类规则收集需要代理的类
-        $proxyClasses = $this->collectProxiesByAspectClassRules();
+        // 生成懒加载代理文件
+        foreach ($this->collectLazyProxyClasses() as $originalClass => $lazyProxyClass) {
+            $proxyFileMap[$lazyProxyClass] = $this->generateProxyFile($lazyProxyClass, $originalClass);
+        }
 
-        // 2. 从属性规则补充收集需要代理的类
-        $proxyClasses = $this->collectProxiesByAttributeRules($proxyClasses);
-
-        return $proxyClasses;
+        return $proxyFileMap;
     }
 
     /**
-     * 从切面类规则收集需要代理的类
+     * 收集需要生成普通代理的类
      */
-    private function collectProxiesByAspectClassRules(): array
+    private function collectNeedProxyClasses(): array
     {
-        $proxyClasses = [];
-        $classAspectRules = AspectCollector::get('classes', []);
+        if (empty($this->originalClassMap)) return [];
 
-        foreach ($classAspectRules as $rules) {
+        $proxyClasses = [];
+        $classRules = AspectCollector::get('classes', []);
+        $attrRules = AspectCollector::get('attributes', []);
+
+        // 1. 收集切面类规则匹配的类
+        foreach ($classRules as $rules) {
             foreach ($rules as $rule) {
                 foreach ($this->originalClassMap as $className => $filePath) {
                     if ($this->isRuleMatch($rule, $className)) {
@@ -118,86 +111,50 @@ class ProxyManager
             }
         }
 
-        return $proxyClasses;
-    }
-
-    /**
-     * 从属性规则补充收集需要代理的类
-     */
-    private function collectProxiesByAttributeRules(array $existingProxies): array
-    {
-        $attributeAspectRules = AspectCollector::get('attributes', []);
-
+        // 2. 补充属性规则匹配的类（排除已收集的）
         foreach ($this->originalClassMap as $className => $filePath) {
-            // 已收集的类跳过
-            if (isset($existingProxies[$className])) {
-                continue;
-            }
-
-            // 提取类的所有属性注解
-            $classAttributes = $this->getClassAttributeNames($className);
-            if (empty($classAttributes)) {
-                continue;
-            }
+            if (isset($proxyClasses[$className])) continue;
 
             // 匹配属性规则
-            foreach ($attributeAspectRules as $rules) {
+            $classAttrs = $this->getClassAttributeNames($className);
+            if (empty($classAttrs)) continue;
+
+            foreach ($attrRules as $rules) {
                 foreach ($rules as $rule) {
-                    foreach ($classAttributes as $attribute) {
-                        if ($this->isRuleMatch($rule, $attribute)) {
-                            $existingProxies[$className] = $filePath;
-                            break 3; // 跳出三层循环，避免重复匹配
+                    foreach ($classAttrs as $attr) {
+                        if ($this->isRuleMatch($rule, $attr)) {
+                            $proxyClasses[$className] = $filePath;
+                            break 3; // 跳出三层循环，避免重复判断
                         }
                     }
                 }
             }
         }
 
-        return $existingProxies;
-    }
-
-    // ------------------------------ 核心逻辑：生成代理文件 ------------------------------
-
-    /**
-     * 批量生成代理文件
-     */
-    private function generateProxyFiles(AstParser $astParser, array $needProxyClasses): array
-    {
-        $proxyFileMap = [];
-
-        foreach ($needProxyClasses as $className => $_) {
-            $proxyFileMap[$className] = $this->generateSingleProxyFile($astParser, $className);
-        }
-
-        return $proxyFileMap;
+        return array_keys($proxyClasses);
     }
 
     /**
-     * 生成单个类的代理文件（仅文件变更时重新生成）
+     * 生成代理文件（兼容普通/懒加载代理）
      */
-    private function generateSingleProxyFile(AstParser $astParser, string $className): string
+    private function generateProxyFile(string $className, ?string $originalClass = null): string
     {
         $proxyFilePath = $this->buildProxyFilePath($className);
+        $checkClass = $originalClass ?: $className;
 
-        // 文件不存在或原文件更新时间晚于代理文件，重新生成
-        if (!file_exists($proxyFilePath) || $this->isOriginalFileModified($className, $proxyFilePath)) {
-            file_put_contents($proxyFilePath, $astParser->proxy($className), LOCK_EX);
+        // 按需生成：文件不存在 或 原文件已修改
+        if (!file_exists($proxyFilePath) || $this->isOriginalFileModified($checkClass, $proxyFilePath)) {
+            $content = $originalClass
+                ? AstParser::getInstance()->lazyProxy($className, $originalClass)
+                : AstParser::getInstance()->proxy($className);
+            file_put_contents($proxyFilePath, $content, LOCK_EX);
         }
 
         return $proxyFilePath;
     }
 
     /**
-     * 判断原文件是否比代理文件新
-     */
-    private function isOriginalFileModified(string $className, string $proxyFilePath): bool
-    {
-        $originalFilePath = $this->originalClassMap[$className];
-        return filemtime($proxyFilePath) < filemtime($originalFilePath);
-    }
-
-    /**
-     * 构建代理文件的完整路径
+     * 构建代理文件路径
      */
     private function buildProxyFilePath(string $className): string
     {
@@ -205,44 +162,71 @@ class ProxyManager
         return rtrim($this->proxyDirectory, '/') . '/' . $proxyFileName;
     }
 
-    // ------------------------------ 辅助逻辑：规则匹配 & 属性提取 ------------------------------
+    /**
+     * 检查原始文件是否已修改（用于判断是否重新生成代理）
+     */
+    private function isOriginalFileModified(string $className, string $proxyFilePath): bool
+    {
+        $originalFilePath = $this->originalClassMap[$className] ?? '';
+        return $originalFilePath && filemtime($proxyFilePath) < filemtime($originalFilePath);
+    }
 
     /**
-     * 规则匹配（支持通配符*，处理::方法后缀）
+     * 规则匹配（支持精确匹配和通配符*）
      */
     private function isRuleMatch(string $rule, string $target): bool
     {
         // 移除方法后缀（如 App\User::getName → App\User）
         $pureRule = str_contains($rule, '::') ? explode('::', $rule)[0] : $rule;
 
-        // 精确匹配（无通配符时）
+        // 精确匹配
         if ($pureRule === $target && !str_contains($pureRule, '*')) {
             return true;
         }
 
         // 通配符匹配（转换为正则）
-        $regexPattern = '/^' . str_replace(['*', '\\'], ['.*', '\\\\'], $pureRule) . '$/';
-        return preg_match($regexPattern, $target) === 1;
+        $regex = '/^' . str_replace('\*', '.*', preg_quote($pureRule, '/')) . '$/';
+        return preg_match($regex, $target) === 1;
     }
 
     /**
-     * 提取类的所有属性注解名称（去重）
+     * 获取类的所有属性注解名称
      */
     private function getClassAttributeNames(string $className): array
     {
-        $attributes = AttributeCollector::get($className, []);
         $attributeNames = [];
-
-        foreach ($attributes as $attributeGroup) {
-            foreach ($attributeGroup as $name => $attribute) {
-                if (is_object($attribute)) {
+        foreach (AttributeCollector::get($className, []) as $attrGroup) {
+            foreach ($attrGroup as $name => $attr) {
+                if (is_object($attr)) {
                     $attributeNames[] = $name;
                 } else {
-                    $attributeNames = array_merge($attributeNames, array_keys($attribute));
+                    $attributeNames = array_merge($attributeNames, array_keys($attr));
                 }
             }
         }
-
         return array_unique($attributeNames);
+    }
+
+    /**
+     * 生成懒加载代理类名
+     */
+    public static function lazyName(string $name): string
+    {
+        return self::LAZY_NS . $name;
+    }
+
+    /**
+     * 收集需要生成懒加载代理的类（基于Inject注解的lazy属性）
+     */
+    protected function collectLazyProxyClasses(): array
+    {
+        $lazyProxyClasses = [];
+        foreach (AttributeCollector::getPropertiesByAttribute(Inject::class) as $property) {
+            $attr = $property['attribute'] ?? null;
+            if ($attr instanceof Inject && $attr->lazy) {
+                $lazyProxyClasses[$attr->value] = static::lazyName($attr->value);
+            }
+        }
+        return $lazyProxyClasses;
     }
 }

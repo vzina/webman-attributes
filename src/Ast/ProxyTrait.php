@@ -5,9 +5,9 @@
  *
  * 代理类核心切面处理Trait，负责方法调用的切面拦截、优先级排序和管道执行
  *
- * @package openai-web
+ * @package attributes
  * @author  weijian.ye
- * @contact yeweijian@eyugame.com
+ * @contact yeweijian299@163.com
  * @link    https://github.com/vzina
  */
 declare (strict_types=1);
@@ -40,7 +40,7 @@ trait ProxyTrait
     {
         $className = $proceedingJoinPoint->className;
         $methodName = $proceedingJoinPoint->methodName;
-var_dump(4444);
+
         if (! AspectManagerCollector::has($className, $methodName)) {
             $aspects = array_unique(array_merge(
                 static::getClassesAspects($className, $methodName),
