@@ -79,9 +79,13 @@ class AstProxyCallVisitor extends NodeVisitorAbstract
 
     public function enterNode(Node $node)
     {
-        if ($node instanceof ClassMethod) {
-            $this->shouldRewrite = $this->shouldRewrite($node);
+        switch ($node) {
+            case $node instanceof ClassMethod:
+                $this->shouldRewrite = $this->shouldRewrite($node);
+                break;
         }
+
+        return null;
     }
 
     public function leaveNode(Node $node)

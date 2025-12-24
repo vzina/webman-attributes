@@ -32,7 +32,7 @@ class Options
 
     public function scanHandler(): ScanHandlerInterface
     {
-        $class = $this->options['scan_handler'] ?? ProcScanHandler::class;
+        $class = $this->options['scan_handler'] ?? NullScanHandler::class;
         return new $class;
     }
 

@@ -40,7 +40,7 @@ trait ProxyTrait
     {
         $className = $proceedingJoinPoint->className;
         $methodName = $proceedingJoinPoint->methodName;
-
+var_dump(4444);
         if (! AspectManagerCollector::has($className, $methodName)) {
             $aspects = array_unique(array_merge(
                 static::getClassesAspects($className, $methodName),

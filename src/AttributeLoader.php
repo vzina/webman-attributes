@@ -12,9 +12,7 @@ declare (strict_types=1);
 
 namespace Vzina\Attributes;
 
-use Illuminate\Filesystem\Filesystem;
 use RuntimeException;
-use support\App;
 use support\Container;
 use support\Log;
 use Throwable;
@@ -28,7 +26,6 @@ use Vzina\Attributes\Reflection\Composer;
 use Vzina\Attributes\Reflection\ReflectionManager;
 use Vzina\Attributes\Scan\Options;
 use Vzina\Attributes\Scan\Scanner;
-use Webman\Config;
 
 class AttributeLoader
 {
@@ -44,23 +41,15 @@ class AttributeLoader
             return;
         }
 
-        if (empty(Config::get())) {
-            if (! method_exists(App::class, 'loadAllConfig')) {
-                return;
-            }
-            App::loadAllConfig(['route']);
-        }
-
         $option = static::initOptions();
-        if ($option === null) {
-            return;
-        }
+        $loader = Composer::getLoader();
+        $option->classMap() and $loader->addClassMap($option->classMap());
 
         AstVisitorManager::exists(AstPropertyVisitor::class) or AstVisitorManager::insert(AstPropertyVisitor::class);
         AstVisitorManager::exists(AstProxyCallVisitor::class) or AstVisitorManager::insert(AstProxyCallVisitor::class);
         self::registerProperties();
 
-        Composer::getLoader()->addClassMap(Scanner::scan($option));
+        $loader->addClassMap(Scanner::scan($option));
         LazyLoader::bootstrap($option->proxyPath(), $option->lazyLoader());
     }
 
@@ -80,13 +69,9 @@ class AttributeLoader
         return Log::channel();
     }
 
-    protected static function initOptions()
+    protected static function initOptions(): Options
     {
         $config = (array)config('plugin.vzina.attributes');
-        if (empty($config['app']) || empty($config['app']['enable'])) {
-            return null;
-        }
-
         foreach (config('plugin', []) as $firm => $projects) {
             if ($firm !== 'vzina' && isset($projects['attribute'])) {
                 $config['attribute'] = array_merge_recursive($config['attribute'] ?? [], (array)$projects['attribute']);
