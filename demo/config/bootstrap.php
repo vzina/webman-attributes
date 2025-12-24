@@ -13,6 +13,5 @@
  */
 
 return [
-    support\bootstrap\Session::class,
-    \app\listeners\Listener::class,
+    \app\attributes\Listener::class,
 ];

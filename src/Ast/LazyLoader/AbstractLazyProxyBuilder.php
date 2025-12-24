@@ -3,9 +3,9 @@
  * AbstractLazyProxyBuilder.php
  * PHP version 7
  *
- * @package openai-web
+ * @package attributes
  * @author  weijian.ye
- * @contact yeweijian@eyugame.com
+ * @contact yeweijian299@163.com
  * @link    https://github.com/vzina
  */
 declare (strict_types=1);
@@ -20,21 +20,10 @@ use PhpParser\Node\Stmt\ClassConst;
 
 abstract class AbstractLazyProxyBuilder
 {
-    /**
-     * The Builder instance.
-     *
-     * @var mixed
-     */
     public $builder;
 
-    /**
-     * The BuilderFactory.
-     */
     public BuilderFactory $factory;
 
-    /**
-     * Class Namespace.
-     */
     protected ?string $namespace = null;
 
     protected ?string $proxyClassName = null;

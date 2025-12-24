@@ -3,9 +3,9 @@
  * AstParser.php
  * PHP version 7
  *
- * @package openai-web
+ * @package attributes
  * @author  weijian.ye
- * @contact yeweijian@eyugame.com
+ * @contact yeweijian299@163.com
  * @link    https://github.com/vzina
  */
 declare (strict_types=1);
@@ -13,6 +13,7 @@ declare (strict_types=1);
 namespace Vzina\Attributes\Ast;
 
 use Illuminate\Support\Arr;
+use Illuminate\Support\Str;
 use InvalidArgumentException;
 use PhpParser\Node;
 use PhpParser\Node\ComplexType;
@@ -23,13 +24,13 @@ use PhpParser\Node\Param;
 use PhpParser\Node\Stmt;
 use PhpParser\Node\Stmt\Class_;
 use PhpParser\Node\Stmt\ClassLike;
-use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Interface_;
 use PhpParser\Node\Stmt\Namespace_;
 use PhpParser\Node\Stmt\Trait_;
 use PhpParser\Node\Stmt\TraitUse;
 use PhpParser\Node\UnionType;
 use PhpParser\NodeTraverser;
+use PhpParser\NodeVisitor\NameResolver;
 use PhpParser\Parser;
 use PhpParser\ParserFactory;
 use PhpParser\PhpVersion;
@@ -42,6 +43,11 @@ use ReflectionParameter;
 use ReflectionType;
 use ReflectionUnionType;
 use Symfony\Component\Finder\Finder;
+use Vzina\Attributes\Ast\LazyLoader\AbstractLazyProxyBuilder;
+use Vzina\Attributes\Ast\LazyLoader\ClassLazyProxyBuilder;
+use Vzina\Attributes\Ast\LazyLoader\FallbackLazyProxyBuilder;
+use Vzina\Attributes\Ast\LazyLoader\InterfaceLazyProxyBuilder;
+use Vzina\Attributes\Ast\LazyLoader\PublicMethodVisitor;
 use Vzina\Attributes\Reflection\Composer;
 use Vzina\Attributes\Reflection\ReflectionManager;
 
@@ -120,6 +126,39 @@ class AstParser
         $modifiedStmts = $traverser->traverse($stmts);
 
         return $this->printer->prettyPrintFile($modifiedStmts);
+    }
+
+    public function lazyProxy(string $proxy, string $target): string
+    {
+        $ref = new ReflectionClass($target);
+        if ($ref->isFinal()) {
+            $builder = new FallbackLazyProxyBuilder();
+            return $this->buildNewCode($builder, $proxy, $ref);
+        }
+        if ($ref->isInterface()) {
+            $builder = new InterfaceLazyProxyBuilder();
+            return $this->buildNewCode($builder, $proxy, $ref);
+        }
+        $builder = new ClassLazyProxyBuilder();
+
+        return $this->buildNewCode($builder, $proxy, $ref);
+    }
+
+    private function buildNewCode(AbstractLazyProxyBuilder $builder, string $proxy, ReflectionClass $ref): string
+    {
+        $target = $ref->getName();
+        $nodes = $this->getNodesFromReflectionClass($ref);
+        $builder->addClassBoilerplate($proxy, $target);
+        $builder->addClassRelationship();
+        $traverser = new NodeTraverser();
+        $methods = $this->getAllMethodsFromStmts($nodes);
+        $visitor = new PublicMethodVisitor($methods, $builder->getOriginalClassName());
+        $traverser->addVisitor(new NameResolver());
+        $traverser->addVisitor($visitor);
+        $traverser->traverse($nodes);
+        $builder->addNodes($visitor->nodes);
+
+        return (new Standard())->prettyPrintFile([$builder->getNode()]);
     }
 
     /**
@@ -214,9 +253,13 @@ class AstParser
     /**
      * 从指定路径扫描所有PHP类并返回反射类映射
      */
-    public function getAllClassesByPath($path): array
+    public function getAllClassesByPath($path, array $excludes = []): array
     {
-        $finder = Finder::create()->files()->in($path)->name('*.php');
+        $finder = Finder::create()->files()->in($path)->filter(function ($file) use ($excludes) {
+            /** @var \Symfony\Component\Finder\SplFileInfo $file */
+            return ! Str::contains($file->getPathname(), $excludes);
+        })->name('*.php');
+
         return $this->getAllClassesByFinder($finder);
     }
 

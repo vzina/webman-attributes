@@ -3,16 +3,14 @@
  * Options.php
  * PHP version 7
  *
- * @package openai-web
+ * @package attributes
  * @author  weijian.ye
- * @contact yeweijian@eyugame.com
+ * @contact yeweijian299@163.com
  * @link    https://github.com/vzina
  */
 declare (strict_types=1);
 
 namespace Vzina\Attributes\Scan;
-
-use Symfony\Component\Finder\Finder;
 
 class Options
 {
@@ -32,7 +30,7 @@ class Options
 
     public function scanHandler(): ScanHandlerInterface
     {
-        $class = $this->options['scan_handler'] ?? NullScanHandler::class;
+        $class = $this->options['scan_handler'] ?? PcntlHandler::class;
         return new $class;
     }
 
@@ -50,27 +48,33 @@ class Options
         return $this->cachePath('proxy');
     }
 
-    public function lazyLoader(): array
-    {
-        return (array)($this->options['lazy_loader'] ?? []);
-    }
-
     public function scanPath(): array
     {
         $directories = [];
         $path = (array)($this->options['scan_path'] ?? []);
-        if (! empty($path)) {
-            foreach (Finder::create()->in($path)->directories()->depth(0)->sortByName() as $dir) {
-                $directories[] = $dir->getPathname();
-            }
+        foreach ($path as $dir) {
+            is_dir($dir) and $directories[] = $dir;
         }
         return $directories;
+    }
+
+    public function excludes(): array
+    {
+        $scanPath = $this->scanPath();
+        $pathCombine = fn($front, $back) => $front . ($back ? (DIRECTORY_SEPARATOR . ltrim($back, DIRECTORY_SEPARATOR)) : $back);
+
+        return array_reduce(
+            array_map(fn($e) => array_map(fn($p) => $pathCombine($p, $e), $scanPath), (array)($this->options['excludes'] ?? [])),
+            'array_merge',
+            []
+        );
     }
 
     public function collectors(): array
     {
         return (array)($this->options['collectors'] ?? []);
     }
+
     public function ignores(): array
     {
         return (array)($this->options['ignores'] ?? []);
@@ -79,6 +83,16 @@ class Options
     public function aspects(): array
     {
         return (array)($this->options['aspects'] ?? []);
+    }
+
+    public function astVisitors(): array
+    {
+        return array_unique((array)($this->options['ast_visitors'] ?? []));
+    }
+
+    public function propertyHandlers(): array
+    {
+        return array_unique((array)($this->options['property_handlers'] ?? []));
     }
 
     public function classMap(): array
