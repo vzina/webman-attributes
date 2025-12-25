@@ -5,7 +5,7 @@
  *
  * @package attributes
  * @author  weijian.ye
- * @contact yeweijian299@163.com
+ * @contact 891718689@qq.com
  * @link    https://github.com/vzina
  */
 declare (strict_types=1);
@@ -36,6 +36,7 @@ return [
     'aspects' => [ // 注册切面
         Vzina\Attributes\Attribute\InjectAspect::class,
         Vzina\Attributes\Attribute\ValueAspect::class,
+        Vzina\Attributes\Attribute\CacheableAspect::class,
     ],
     'property_handlers' => [ // 注册属性注入逻辑
         Vzina\Attributes\Attribute\InjectPropertyHandler::class,

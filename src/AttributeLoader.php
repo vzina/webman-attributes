@@ -5,7 +5,7 @@
  *
  * @package attributes
  * @author  weijian.ye
- * @contact yeweijian299@163.com
+ * @contact 891718689@qq.com
  * @link    https://github.com/vzina
  */
 declare (strict_types=1);
@@ -56,8 +56,6 @@ class AttributeLoader
     }
 
     /**
-     * 获取容器实例
-     *
      * @return \Webman\Container
      */
     public static function getContainer()
@@ -65,9 +63,6 @@ class AttributeLoader
         return Container::instance();
     }
 
-    /**
-     * 初始化配置选项
-     */
     protected static function initOptions(): ?Options
     {
         // 加载基础配置
@@ -99,9 +94,6 @@ class AttributeLoader
         return Options::init($config);
     }
 
-    /**
-     * 从目录加载配置文件
-     */
     protected static function loadFromDir(string $configPath, array $onlyFiles = []): array
     {
         $allConfig = [];

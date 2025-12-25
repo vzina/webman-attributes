@@ -88,13 +88,13 @@ class OrderService
 }
 ```
 
-### 3. 自定义实现定时任务（@Crontab）
+### 3. 定时任务（@Crontab）
 
-通过注解定义定时任务，配置任务进程：`config/process.php`。
+通过注解定义定时任务。
 ```php
 namespace app\crontab;
 
-use app\attributes\Crontab;
+use Vzina\Attributes\Attribute\Crontab;
 
 // 每1分钟执行一次
 #[Crontab(rule: '* * * * *')]
@@ -108,14 +108,14 @@ class OrderStats
 }
 ```
 
-### 4. 自定义实现事件监听（@Listener）
+### 4. 事件监听（@Listener）
 
-监听指定事件，触发时自动执行处理逻辑，加载监听器：`config/bootstrap.php`。
+监听指定事件，触发时自动执行处理逻辑。
 
 ```php
 namespace app\listener;
 
-use app\attributes\Listener;
+use Vzina\Attributes\Attribute\Listener;
 use Webman\Event\Event;
 
 // 监听 "order.created" 事件
@@ -132,4 +132,79 @@ class OrderCreated
 
 // 触发事件（任意位置）
 // Event::dispatch('order.created', ['order_id' => 1001]);
+```
+
+### 5. 注册路由（@Controller）
+
+通过注解定义路由规则。
+
+```php
+namespace app\controller;
+
+use app\routes\RequestMapping;
+use Vzina\Attributes\Attribute\Route\AutoController;
+use Vzina\Attributes\Attribute\Route\Controller;
+use Vzina\Attributes\Attribute\Route\Resource;
+
+// 注册路由
+#[Controller(prefix: 'order', options: ['middleware' => []])]
+class OrderController
+{
+    #[RequestMapping(path: 'index', options: ['middleware' => [], 'name' => '路由名称，默认：类名.方法名'])]
+    public function index()
+    {
+        return json([]);
+    }
+}
+
+// 自动路由
+#[AutoController(prefix: 'bar', options: ['middleware' => []])]
+class BarController
+{
+    public function index()
+    {
+        return json([]);
+    }
+}
+
+// 资源型路由
+#[Resource(prefix: 'bar2')]
+class Bar2Controller
+{
+    public function index()
+    {
+        return json([]);
+    }
+}
+
+```
+
+### 6. 缓存功能（@Cacheable）
+
+通过注解定义缓存逻辑
+
+```php
+namespace app\services;
+
+use Vzina\Attributes\Attribute\Cacheable;
+
+class OrderService
+{
+    #[Cacheable(
+        prefix: "cache", // 缓存前缀
+        value: "#{params.order_id}", // 参数模板，格式：#{方法参数名}，数组及对象：#{方法参数名.元素key/属性名}
+        ttl: 60, // 缓存时间
+        group: "redis", // 缓存策略，默认：config('cache.default')
+        collect: false, // 是否收集缓存key，可用于统一管理，仅支持redis缓存驱动
+        evict: false, // true，仅删除缓存
+        put: false, // true，仅写入缓存
+        aheadSeconds: 0, // 缓存提前更新时间
+        lockSeconds: 10, // 更新缓存锁时间，仅支持redis缓存驱动
+        offset: 0, // 缓存偏移量
+    )]
+    public function handle(array $params)
+    {
+        return time();
+    }
+}
 ```

@@ -13,5 +13,5 @@
  */
 
 return [
-    \app\attributes\Listener::class,
+    Vzina\Attributes\Attribute\ListenerHandler::class,
 ];
