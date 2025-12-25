@@ -1,18 +1,13 @@
 <?php
 /**
- * Bar.php
+ * route.php
  * PHP version 7
  *
  * @package attributes
  * @author  weijian.ye
- * @contact yeweijian299@163.com
+ * @contact 891718689@qq.com
  * @link    https://github.com/vzina
  */
 declare (strict_types=1);
 
-namespace app\attributes;
-
-class Bar
-{
-
-}
+Vzina\Attributes\Attribute\Route\DispatcherFactory::init();

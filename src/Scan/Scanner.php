@@ -5,7 +5,7 @@
  *
  * @package attributes
  * @author  weijian.ye
- * @contact yeweijian299@163.com
+ * @contact 891718689@qq.com
  * @link    https://github.com/vzina
  */
 declare (strict_types=1);
@@ -266,7 +266,6 @@ class Scanner
         $cachedAspects = $this->files->exists($aspectCacheFile) ? (array)unserialize($this->files->get($aspectCacheFile)) : [];
         $this->files->put($aspectCacheFile, serialize($currentAspects));
 
-        // 计算已移除的切面
         $removedAspects = array_filter(array_diff($cachedAspects, $currentAspects), function ($aspectClass) {
             return is_null(AttributeCollector::getClassAttribute($aspectClass, Aspect::class));
         });

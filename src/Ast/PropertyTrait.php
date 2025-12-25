@@ -5,7 +5,7 @@
  *
  * @package attributes
  * @author  weijian.ye
- * @contact yeweijian299@163.com
+ * @contact 891718689@qq.com
  * @link    https://github.com/vzina
  */
 declare (strict_types=1);
