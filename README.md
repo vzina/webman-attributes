@@ -2,42 +2,17 @@
 
 ## 一、工具简介
 
-Attributes 是适配 Webman 框架的轻量级 PHP 注解工具，通过简单的注解（Attribute）语法，快速实现依赖注入、配置注入、定时任务、事件监听等功能，无需手动编写重复代码。
+Attributes 是适配 Webman 框架的轻量级 PHP 注解工具，通过简单的注解（Attribute）语法，快速实现依赖注入、配置注入、定时任务、事件监听等功能，无需手动编写重复代码，方便hyperf用户过渡使用。
 
 ## 二、环境要求
 
 - PHP 8.0+（需支持原生 Attribute 注解）
 - Webman 框架 >= 2.1
 
-## 三、快速配置
+## 三、安装插件
 
-修改配置文件 `config/plugin/vzina/attributes/attribute.php`，保留核心配置即可：
-
-```php
-return [
-    'autoload' => true, // 默认自动加载组件
-    'scan_path' => [ // 扫描目录
-        app_path(),
-        // 组件目录
-        // base_path('vendor/vzina/attributes/src'),
-        // base_path('plugin/xxx'),
-    ],
-    'excludes' => [ // 排除部分扫描目录/文件
-        'config',
-    ],
-    'class_map' => [], // 类映射
-    'ignores' => [
-        // 忽略注解
-        // Vzina\Attributes\Attribute\Inject::class,
-    ],
-    'collectors' => [ // 注册收集器
-        Vzina\Attributes\Collector\AttributeCollector::class,
-        Vzina\Attributes\Collector\AspectCollector::class,
-    ],
-    'aspects' => [ // 注册切面
-        Vzina\Attributes\Attribute\InjectAspect::class,
-    ],
-];
+```shell
+composer require -W vzina/attributes
 ```
 
 ## 四、基础使用
