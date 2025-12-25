@@ -13,6 +13,11 @@
     "illuminate/pipeline": "^12.0",
     "illuminate/filesystem": "^12.0"
   },
+  "suggest": {
+    "webman/event": "event. ",
+    "webman/cache": "cache. ",
+    "workerman/crontab": "crontab. "
+  },
   "autoload": {
     "psr-4": {
       "Vzina\\Attributes\\": "src"
