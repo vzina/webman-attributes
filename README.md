@@ -207,3 +207,39 @@ class OrderStats
 //OrderStats::getMessage(OrderStats::SUCCESS)
 
 ```
+### 7. 切面（@Aspect）
+
+> 注意使用切面前需要生成项目的自动加载（autoload）文件 `composer dump-autoload -o`
+
+```php
+namespace app\aspects;
+
+use GuzzleHttp\Client;
+use Vzina\Attributes\Ast\ProceedingJoinPoint;
+use Vzina\Attributes\Attribute\Aspect;
+use Vzina\Attributes\Attribute\AspectInterface;
+
+#[Aspect]
+class ClientAspect implements AspectInterface
+{
+    public array $classes = [
+        Client::class . '::request'
+    ];
+
+    public function process(ProceedingJoinPoint $proceedingJoinPoint)
+    {
+        var_dump(__METHOD__);
+        return $proceedingJoinPoint->process();
+    }
+}
+
+// 使用方法
+$client = new Client();
+$r = $client->get('https://www.baidu.com');
+var_dump($r->getStatusCode());
+
+// 输出结果：
+//string(33) "app\aspects\ClientAspect::process"
+//int(200)
+
+```
