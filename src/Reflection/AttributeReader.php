@@ -12,6 +12,8 @@ declare (strict_types=1);
 
 namespace Vzina\Attributes\Reflection;
 
+use BackedEnum;
+use Illuminate\Support\Str;
 use ReflectionAttribute;
 use ReflectionClass;
 use ReflectionClassConstant;
@@ -49,5 +51,38 @@ class AttributeReader
         }
 
         return $result;
+    }
+
+    public function getConstants(ReflectionClass $reflection): array
+    {
+        $result = [];
+        $classConstants = $reflection->getReflectionConstants();
+        foreach ($classConstants as $classConstant) {
+            $code = $classConstant->getValue();
+            if ($classConstant->isEnumCase()) {
+                $code = $code instanceof BackedEnum ? $code->value : $code->name;
+            }
+
+            $docComment = $classConstant->getDocComment();
+            if ($docComment && (is_int($code) || is_string($code))) {
+                $result[$code] = $this->parse($docComment, $result[$code] ?? []);
+            }
+        }
+        return $result;
+    }
+
+    protected function parse(string $doc, array $previous): array
+    {
+        $pattern = '/@(\w+)\("(.+)"\)/U';
+        if (preg_match_all($pattern, $doc, $result)) {
+            [, $keys, $values] = $result;
+            foreach ($keys as $i => $key) {
+                if (isset($values[$i])) {
+                    $previous[Str::lower($key)] = $values[$i];
+                }
+            }
+        }
+
+        return $previous;
     }
 }

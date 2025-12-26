@@ -183,3 +183,27 @@ class OrderService
     }
 }
 ```
+
+### 7. 枚举（@Constants）
+
+```php
+namespace app\constants;
+
+use Vzina\Attributes\Attribute\Constants;
+use Vzina\Attributes\Attribute\ConstantsTrait;
+
+#[Constants]
+class OrderStats
+{
+    use ConstantsTrait
+    
+    /**
+     * @Message("完成")
+     */
+    const SUCCESS = 1;
+}
+
+// 使用方法
+//OrderStats::getMessage(OrderStats::SUCCESS)
+
+```

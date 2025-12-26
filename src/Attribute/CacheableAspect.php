@@ -16,7 +16,6 @@ use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 use support\Cache;
 use support\Redis;
-use support\think\Cache as ThinkCache;
 use Vzina\Attributes\Ast\ProceedingJoinPoint;
 use Webman\Config;
 use Workerman\Coroutine;
@@ -46,8 +45,8 @@ class CacheableAspect implements AspectInterface
             $redis = Redis::connection($config['connection'] ?? 'default');
         }
 
-        $collectKey = $attribute->collect ? $prefix . '.MEMBERS' : null;
-        $cache = $this->getCache($group);
+        $collectKey = $attribute->collect ? $prefix . 'MEMBERS' : null;
+        $cache = Cache::store($group);
 
         if ($attribute->evict) { // 缓存清除
             if ($collectKey && $redis) {
@@ -96,15 +95,6 @@ class CacheableAspect implements AspectInterface
         return $callback();
     }
 
-    /**
-     * @param string $group
-     * @return \Psr\SimpleCache\CacheInterface
-     */
-    protected function getCache(string $group)
-    {
-        return class_exists(ThinkCache::class) ? ThinkCache::store($group) : Cache::store($group);
-    }
-
     protected function getFormattedKey(string $prefix, array $arguments, ?string $value = null): string
     {
         if ($value !== null) {
@@ -130,7 +120,7 @@ class CacheableAspect implements AspectInterface
             $value = md5(serialize($arguments));
         }
 
-        return $prefix . '.' . $value;
+        return $prefix . $value;
     }
 
     protected function getRandomOffset(int $offset): int

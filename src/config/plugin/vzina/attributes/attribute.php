@@ -32,6 +32,7 @@ return [
     'collectors' => [ // 注册收集器
         Vzina\Attributes\Collector\AttributeCollector::class,
         Vzina\Attributes\Collector\AspectCollector::class,
+        Vzina\Attributes\Collector\ConstantsCollector::class,
     ],
     'aspects' => [ // 注册切面
         Vzina\Attributes\Attribute\InjectAspect::class,
