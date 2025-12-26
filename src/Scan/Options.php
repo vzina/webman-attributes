@@ -53,7 +53,7 @@ class Options
         $directories = [];
         $path = (array)($this->options['scan_path'] ?? []);
         foreach ($path as $dir) {
-            is_dir($dir) and $directories[] = $dir;
+            file_exists($dir) and $directories[] = $dir;
         }
         return $directories;
     }
@@ -92,7 +92,7 @@ class Options
 
     public function propertyHandlers(): array
     {
-        return array_unique((array)($this->options['property_handlers'] ?? []));
+        return (array)($this->options['property_handlers'] ?? []);
     }
 
     public function classMap(): array

@@ -20,12 +20,7 @@ use Vzina\Attributes\Reflection\ReflectionManager;
 
 class InjectPropertyHandler implements PropertyHandlerInterface
 {
-    public function attribute(): string
-    {
-        return Inject::class;
-    }
-
-    public function process(object $object, string $currentClass, string $targetClass, string $property, AttributeInterface $attribute)
+    public function __invoke(object $object, string $currentClass, string $targetClass, string $property, AttributeInterface $attribute)
     {
         try {
             $container = AttributeLoader::getContainer();

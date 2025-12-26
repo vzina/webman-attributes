@@ -27,7 +27,6 @@ return [
     'class_map' => [], // 类映射
     'ignores' => [
         // 忽略注解
-        // Vzina\Attributes\Attribute\Inject::class,
     ],
     'collectors' => [ // 注册收集器
         Vzina\Attributes\Collector\AttributeCollector::class,
@@ -39,9 +38,9 @@ return [
         Vzina\Attributes\Attribute\ValueAspect::class,
         Vzina\Attributes\Attribute\CacheableAspect::class,
     ],
-    'property_handlers' => [ // 注册属性注入逻辑
-        Vzina\Attributes\Attribute\InjectPropertyHandler::class,
-        Vzina\Attributes\Attribute\ValuePropertyHandler::class,
+    'property_handlers' => [ // 注册属性注入处理器
+        Vzina\Attributes\Attribute\Inject::class => Vzina\Attributes\Attribute\InjectPropertyHandler::class,
+        Vzina\Attributes\Attribute\Value::class => Vzina\Attributes\Attribute\ValuePropertyHandler::class,
     ],
     'ast_visitors' => [ // 注册AST访问器
         Vzina\Attributes\Ast\AstPropertyVisitor::class,
