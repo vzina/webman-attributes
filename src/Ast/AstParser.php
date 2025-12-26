@@ -69,7 +69,7 @@ class AstParser
     public function __construct()
     {
         $this->printer = new Standard();
-        $this->parser = (new ParserFactory())->createForVersion(PhpVersion::fromComponents(8, 1));
+        $this->parser = (new ParserFactory())->createForHostVersion();
     }
 
     /**
