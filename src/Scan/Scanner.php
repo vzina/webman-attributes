@@ -21,279 +21,210 @@ use Vzina\Attributes\Attribute\Aspect;
 use Vzina\Attributes\Attribute\AttributeInterface;
 use Vzina\Attributes\Collector\AspectCollector;
 use Vzina\Attributes\Collector\AttributeCollector;
+use Vzina\Attributes\Collector\MetadataCollector;
 use Vzina\Attributes\Reflection\AttributeReader;
 use Vzina\Attributes\Reflection\Composer;
 
 class Scanner
 {
-    private Filesystem $files;
-    private AttributeReader $attributeReader;
+    private Filesystem $filesystem;
+    private AttributeReader $reader;
 
     public function __construct(protected Options $option)
     {
-        $this->files = new Filesystem();
-        $this->attributeReader = new AttributeReader();
+        $this->filesystem = new Filesystem();
+        $this->reader = new AttributeReader();
     }
 
-    /**
-     * 执行扫描核心逻辑
-     */
-    public static function scan(Options $option): array
+    public function scan(array $classMap = []): array
     {
-        $scanner = new self($option);
-        $scanPaths = $option->scanPath();
-
-        // 扫描路径为空时直接返回空数组
-        if (empty($scanPaths)) return [];
-
-        // 初始化核心变量
-        $cacheFile = $scanner->getCacheFile('scan.cache');
-        $cacheMtime = $scanner->getCacheMtime($cacheFile);
-        $collectors = $option->collectors();
-        $scanHandler = $option->scanHandler();
-
-        // 缓存有效或已完成扫描，直接加载缓存
-        if ($scanner->isCacheValid($cacheMtime, $scanHandler)) {
-            return $scanner->loadCache($cacheFile, $collectors);
+        $proxyDir = $this->option->proxyPath();
+        $paths = $this->option->scanPath();
+        $collectors = $this->option->collectors();
+        if (! $paths) {
+            return [];
         }
 
-        // 加载缓存数据
-        $scanner->loadCache($cacheFile, $collectors);
+        $cacheFile = $this->option->cachePath() . '/scan.cache';
+        $lastCacheModified = file_exists($cacheFile) ? $this->filesystem->lastModified($cacheFile) : 0;
+        if ($lastCacheModified > 0 && $this->option->cacheable()) {
+            return $this->deserializeCachedScanData($cacheFile, $collectors);
+        }
 
-        // 核心扫描流程
-        $refClassMap = $scanner->scanClasses($scanPaths, $cacheMtime, $collectors);
-        $scanner->processAspects($cacheMtime);
-        $proxies = $scanner->generateProxies($refClassMap);
+        $scanner = $this->option->scanHandler();
+        if ($scanner->scan()->isScanned()) {
+            return $this->deserializeCachedScanData($cacheFile, $collectors);
+        }
 
-        // 持久化缓存并标记扫描完成
-        $scanner->saveCache($cacheFile, $collectors, $proxies);
-        $scanHandler->finish();
+        $this->deserializeCachedScanData($cacheFile, $collectors);
 
-        return $proxies;
-    }
+        $classes = AstParser::getInstance()->getAllClassesByPath($paths);
 
-    /**
-     * 获取缓存文件完整路径
-     */
-    private function getCacheFile(string $fileName): string
-    {
-        return $this->option->cachePath() . DIRECTORY_SEPARATOR . $fileName;
-    }
+        $this->clearRemovedClasses($collectors, $classes);
 
-    /**
-     * 获取缓存文件最后修改时间
-     */
-    private function getCacheMtime(string $cacheFile): int
-    {
-        return $this->files->exists($cacheFile) ? $this->files->lastModified($cacheFile) : 0;
-    }
+        $reflectionClassMap = [];
+        foreach ($classes as $className => $reflectionClass) {
+            $reflectionClassMap[$className] = $reflectionClass->getFileName();
+            if ($this->filesystem->lastModified($reflectionClass->getFileName()) >= $lastCacheModified) {
+                /** @var MetadataCollector $collector */
+                foreach ($collectors as $collector) {
+                    $collector::clear($className);
+                }
 
-    /**
-     * 判断缓存是否有效
-     */
-    private function isCacheValid(int $cacheMtime, $scanHandler): bool
-    {
-        return ($cacheMtime > 0 && $this->option->cacheable()) || $scanHandler->scan()->isScanned();
-    }
-
-    /**
-     * 加载缓存数据
-     */
-    private function loadCache(string $cacheFile, array $collectors): array
-    {
-        if (! $this->files->exists($cacheFile)) return [];
-
-        [$collectorData, $proxies] = unserialize($this->files->get($cacheFile)) ?: [[], []];
-        foreach ($collectorData as $class => $data) {
-            if (in_array($class, $collectors, true)) {
-                $class::deserialize($data);
+                $this->collect($reflectionClass);
             }
         }
 
+        $this->loadAspects($lastCacheModified);
+
+        $data = [];
+        /** @var MetadataCollector|string $collector */
+        foreach ($collectors as $collector) {
+            $data[$collector] = $collector::serialize();
+        }
+
+        // Get the class map of Composer loader
+        $classMap = array_merge($reflectionClassMap, $classMap);
+        $proxyManager = new ProxyManager($classMap, $proxyDir);
+        $proxies = $proxyManager->getProxies();
+
+        $this->filesystem->put($cacheFile, serialize([$data, $proxies]));
+        $scanner->finish();
+
         return $proxies;
     }
 
-    /**
-     * 保存缓存数据
-     */
-    private function saveCache(string $cacheFile, array $collectors, array $proxies): void
+    public function collect(ReflectionClass $reflection): void
     {
-        $collectorData = [];
-        foreach ($collectors as $class) {
-            $collectorData[$class] = $class::serialize();
+        $className = $reflection->getName();
+        if (($path = $this->option->classMap()[$className] ?? null) && $reflection->getFileName() !== $path) {
+            return;
         }
 
-        $this->files->put($cacheFile, serialize([$collectorData, $proxies]));
-    }
+        foreach ($this->reader->getAttributes($reflection) as $classAttribute) {
+            if ($classAttribute instanceof AttributeInterface) {
+                $classAttribute->collectClass($className);
+            }
+        }
 
-    /**
-     * 扫描类并收集属性
-     */
-    private function scanClasses(array $scanPaths, int $cacheMtime, array $collectors): array
-    {
-        // 获取所有类并清理已删除的类数据
-        $classes = AstParser::getInstance()->getAllClassesByPath($scanPaths, $this->option->excludes());
-        $this->clearRemovedClasses($classes, $collectors);
-
-        $refClassMap = [];
-        $customClassMap = $this->option->classMap();
-
-        foreach ($classes as $className => $reflection) {
-            $filePath = $reflection->getFileName();
-            $refClassMap[$className] = $filePath;
-
-            // 文件有变更时重新收集属性
-            if ($this->files->lastModified($filePath) >= $cacheMtime) {
-                $this->clearClassCollectorData($className, $collectors);
-
-                // 自定义类映射未覆盖原文件时才收集
-                if (empty($customClassMap[$className]) || $filePath === $customClassMap[$className]) {
-                    $this->collectClassAttributes($reflection);
+        foreach ($reflection->getProperties() as $property) {
+            foreach ($this->reader->getAttributes($property) as $propertyAttribute) {
+                if ($propertyAttribute instanceof AttributeInterface) {
+                    $propertyAttribute->collectProperty($className, $property->getName());
                 }
             }
         }
 
-        return $refClassMap;
-    }
-
-    /**
-     * 清理已删除类的收集器数据
-     */
-    private function clearRemovedClasses(array $currentClasses, array $collectors): void
-    {
-        $classCacheFile = $this->getCacheFile('classes.cache');
-        $cachedClasses = $this->files->exists($classCacheFile) ? (array)unserialize($this->files->get($classCacheFile)) : [];
-        $currentClassNames = array_keys($currentClasses);
-
-        // 保存当前类列表
-        $this->files->put($classCacheFile, serialize($currentClassNames));
-
-        // 清理已移除类的收集器数据
-        $removedClasses = array_diff($cachedClasses, $currentClassNames);
-        if (! empty($removedClasses)) {
-            foreach ($collectors as $class) {
-                $class::clear($removedClasses);
-            }
-        }
-    }
-
-    /**
-     * 清理单个类的收集器数据
-     */
-    private function clearClassCollectorData(string $className, array $collectors): void
-    {
-        foreach ($collectors as $class) {
-            $class::clear($className);
-        }
-    }
-
-    /**
-     * 收集单个类的所有属性
-     */
-    private function collectClassAttributes(ReflectionClass $reflection): void
-    {
-        $className = $reflection->getName();
-
-        // 收集类注解
-        $this->collectAttributes($reflection, fn($attr) => $attr->collectClass($className));
-
-        // 收集属性注解
-        foreach ($reflection->getProperties() as $property) {
-            $this->collectAttributes($property, fn($attr) => $attr->collectProperty($className, $property->getName()));
-        }
-
-        // 收集方法注解
         foreach ($reflection->getMethods() as $method) {
-            $this->collectAttributes($method, fn($attr) => $attr->collectMethod($className, $method->getName()));
+            foreach ($this->reader->getAttributes($method) as $methodAttribute) {
+                if ($methodAttribute instanceof AttributeInterface) {
+                    $methodAttribute->collectMethod($className, $method->getName());
+                }
+            }
         }
 
-        // 收集常量注解
-        foreach ($reflection->getReflectionConstants() as $constant) {
-            $this->collectAttributes($constant, fn($attr) => $attr->collectClassConstant($className, $constant->getName()));
-        }
-    }
-
-    /**
-     * 通用属性收集方法
-     */
-    private function collectAttributes($ref, callable $collectCallback): void
-    {
-        foreach ($this->attributeReader->getAttributes($ref, $this->option->ignores()) as $attribute) {
-            if ($attribute instanceof AttributeInterface) {
-                $collectCallback($attribute);
+        foreach ($reflection->getReflectionConstants() as $classConstant) {
+            foreach ($this->reader->getAttributes($classConstant) as $constantAttribute) {
+                if ($constantAttribute instanceof AttributeInterface) {
+                    $constantAttribute->collectClassConstant($className, $classConstant->getName());
+                }
             }
         }
     }
 
-    /**
-     * 加载并处理切面
-     */
-    private function processAspects(int $cacheMtime): void
+    protected function deserializeCachedScanData(string $cacheFile, array $collectors)
+    {
+        if (! file_exists($cacheFile)) {
+            return [];
+        }
+
+        [$data, $proxies] = unserialize(file_get_contents($cacheFile));
+        foreach ($data as $collector => $deserialized) {
+            /** @var MetadataCollector $collector */
+            if (in_array($collector, $collectors)) {
+                $collector::deserialize($deserialized);
+            }
+        }
+
+        return $proxies;
+    }
+
+    protected function clearRemovedClasses(array $collectors, array $reflections): void
+    {
+        $path = $this->option->cachePath() . '/classes.cache';
+        $classes = array_keys($reflections);
+
+        $data = [];
+        if ($this->filesystem->exists($path)) {
+            $data = unserialize($this->filesystem->get($path));
+        }
+
+        $this->filesystem->put($path, serialize($classes));
+
+        $removed = array_diff($data, $classes);
+
+        foreach ($removed as $class) {
+            /** @var MetadataCollector $collector */
+            foreach ($collectors as $collector) {
+                $collector::clear($class);
+            }
+        }
+    }
+
+    protected function loadAspects(int $lastCacheModified): void
     {
         $aspects = $this->option->aspects();
-        [$removedAspects, $changedAspects] = $this->getChangedAspects($aspects, $cacheMtime);
 
-        // 清理已移除的切面
-        foreach ($removedAspects as $aspectClass) {
-            AspectCollector::clear($aspectClass);
+        [$removed, $changed] = $this->getChangedAspects($aspects, $lastCacheModified);
+        foreach ($removed as $aspect) {
+            AspectCollector::clear($aspect);
         }
 
-        // 加载变更的切面
-        $loadedAspects = [];
         foreach ($aspects as $key => $value) {
-            [$aspectClass, $priority] = is_numeric($key) ? [$value, null] : [$key, (int)$value];
-
-            if (isset($loadedAspects[$aspectClass]) || ! in_array($aspectClass, $changedAspects, true)) {
+            [$aspect, $priority] = is_numeric($key) ? [$value, null] : [$key, (int)$value];
+            if (! in_array($aspect, $changed, true)) {
                 continue;
             }
 
-            AspectLoader::collect($aspectClass, ['priority' => $priority]);
-            $loadedAspects[$aspectClass] = true;
+            AspectLoader::collect($aspect, ['priority' => $priority]);
         }
     }
 
-    /**
-     * 获取变更的切面（移除/新增/修改）
-     */
-    private function getChangedAspects(array $aspects, int $cacheMtime): array
+    protected function getChangedAspects(array $aspects, int $lastCacheModified): array
     {
-        $aspectCacheFile = $this->getCacheFile('aspects.cache');
-        // 提取当前切面类列表
-        $currentAspects = array_map(function ($key, $value) {
-            return is_numeric($key) ? $value : $key;
-        }, array_keys($aspects), $aspects);
+        $path = $this->option->cachePath() . '/aspects.cache';
+        $classes = [];
+        foreach ($aspects as $key => $value) {
+            $classes[] = is_numeric($key) ? $value : $key;
+        }
 
-        $cachedAspects = $this->files->exists($aspectCacheFile) ? (array)unserialize($this->files->get($aspectCacheFile)) : [];
-        $this->files->put($aspectCacheFile, serialize($currentAspects));
+        $data = [];
+        if ($this->filesystem->exists($path)) {
+            $data = unserialize($this->filesystem->get($path));
+        }
 
-        $removedAspects = array_filter(array_diff($cachedAspects, $currentAspects), function ($aspectClass) {
-            return is_null(AttributeCollector::getClassAttribute($aspectClass, Aspect::class));
-        });
+        $this->filesystem->put($path, serialize($classes));
 
-        // 计算变更的切面（新增/文件修改）
-        $changedAspects = array_diff($currentAspects, $cachedAspects);
-        $composerLoader = Composer::getLoader();
-
-        foreach ($currentAspects as $aspectClass) {
-            $filePath = $composerLoader->findFile($aspectClass);
-            if ($filePath === false) {
-                continue;
-            }
-
-            if ($cacheMtime <= $this->files->lastModified($filePath)) {
-                $changedAspects[] = $aspectClass;
+        $diff = array_diff($data, $classes);
+        $changed = array_diff($classes, $data);
+        $removed = [];
+        foreach ($diff as $item) {
+            $annotation = AttributeCollector::getClassAttribute($item, Aspect::class);
+            if (is_null($annotation)) {
+                $removed[] = $item;
             }
         }
 
-        return [array_unique($removedAspects), array_unique($changedAspects)];
-    }
+        $loader = Composer::getLoader();
+        foreach ($classes as $class) {
+            if (($file = $loader->findFile($class)) && $lastCacheModified <= $this->filesystem->lastModified($file)) {
+                $changed[] = $class;
+            }
+        }
 
-    /**
-     * 生成代理类
-     */
-    private function generateProxies(array $refClassMap): array
-    {
-        $classMap = array_merge($refClassMap, $this->option->classMap());
-        return (new ProxyManager($classMap, $this->option->proxyPath()))->getProxies();
+        return [
+            array_values(array_unique($removed)),
+            array_values(array_unique($changed)),
+        ];
     }
 }

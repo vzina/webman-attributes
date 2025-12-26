@@ -13,6 +13,7 @@ declare (strict_types=1);
 namespace Vzina\Attributes;
 
 use FilesystemIterator;
+use PhpParser\NodeVisitor;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use support\Container;
@@ -39,20 +40,22 @@ class AttributeLoader
 
         // 注册AST访问器
         foreach ($option->astVisitors() as $visitor) {
-            AstVisitorManager::exists($visitor) or AstVisitorManager::insert($visitor);
-        }
-
-        // 注册属性注入逻辑
-        foreach ($option->propertyHandlers() as $propertyHandler) {
-            if (class_exists($propertyHandler)
-                && ($instance = new $propertyHandler())
-                && $instance instanceof PropertyHandlerInterface
-            ) {
-                PropertyManagerCollector::register($instance->attribute(), [$instance, 'process']);
+            if (class_exists($visitor) && in_array(NodeVisitor::class, class_implements($visitor), true)) {
+                AstVisitorManager::exists($visitor) or AstVisitorManager::insert($visitor);
             }
         }
 
-        $loader->addClassMap(Scanner::scan($option));
+        // 注册属性注入逻辑
+        foreach ($option->propertyHandlers() as $attribute => $propertyHandler) {
+            if (class_exists($attribute) &&
+                class_exists($propertyHandler) &&
+                in_array(PropertyHandlerInterface::class, class_implements($propertyHandler), true)
+            ) {
+                PropertyManagerCollector::register($attribute, new $propertyHandler);
+            }
+        }
+
+        $loader->addClassMap((new Scanner($option))->scan($loader->getClassMap()));
     }
 
     /**

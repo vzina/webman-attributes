@@ -17,12 +17,7 @@ use Webman\Config;
 
 class ValuePropertyHandler implements PropertyHandlerInterface
 {
-    public function attribute(): string
-    {
-        return Value::class;
-    }
-
-    public function process(object $object, string $currentClass, string $targetClass, string $property, AttributeInterface $attribute)
+    public function __invoke(object $object, string $currentClass, string $targetClass, string $property, AttributeInterface $attribute)
     {
         $refProp = ReflectionManager::reflectProperty($currentClass, $property);
         $refProp->setValue($object, match (true) {
