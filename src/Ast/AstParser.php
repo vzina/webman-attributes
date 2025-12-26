@@ -33,7 +33,6 @@ use PhpParser\NodeTraverser;
 use PhpParser\NodeVisitor\NameResolver;
 use PhpParser\Parser;
 use PhpParser\ParserFactory;
-use PhpParser\PhpVersion;
 use PhpParser\PrettyPrinter\Standard;
 use PhpParser\PrettyPrinterAbstract;
 use ReflectionClass;
@@ -239,14 +238,14 @@ class AstParser
     public function getExprFromValue($value): Expr
     {
         return match (gettype($value)) {
-            'array'     => $this->createArrayExpr($value),
-            'string'    => new Expr\Scalar\String_($value),
-            'integer'   => new Expr\Scalar\Int_($value),
-            'double'    => new Expr\Scalar\Float_($value),
-            'NULL'      => new Expr\ConstFetch(new Name('null')),
-            'boolean'   => new Expr\ConstFetch(new Name($value ? 'true' : 'false')),
-            'object'    => $this->createObjectExpr($value),
-            default     => throw new InvalidArgumentException(sprintf('Unsupported value type: %s', $value)),
+            'array' => $this->createArrayExpr($value),
+            'string' => new Node\Scalar\String_($value),
+            'integer' => new Node\Scalar\Int_($value),
+            'double' => new Node\Scalar\Float_($value),
+            'NULL' => new Expr\ConstFetch(new Name('null')),
+            'boolean' => new Expr\ConstFetch(new Name($value ? 'true' : 'false')),
+            'object' => $this->createObjectExpr($value),
+            default => throw new InvalidArgumentException(sprintf('Unsupported value type: %s', $value)),
         };
     }
 
@@ -456,7 +455,7 @@ class AstParser
      */
     private function createArrayExpr(array $value): Expr\Array_
     {
-        $isList = !Arr::isAssoc($value);
+        $isList = ! Arr::isAssoc($value);
         $items = [];
 
         foreach ($value as $key => $item) {
@@ -477,8 +476,8 @@ class AstParser
         }
 
         return is_int($key)
-            ? new Expr\Scalar\Int_($key)
-            : new Expr\Scalar\String_((string)$key);
+            ? new Node\Scalar\Int_($key)
+            : new Node\Scalar\String_((string)$key);
     }
 
     /**

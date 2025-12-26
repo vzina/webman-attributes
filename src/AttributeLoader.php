@@ -100,6 +100,10 @@ class AttributeLoader
     protected static function loadFromDir(string $configPath, array $onlyFiles = []): array
     {
         $allConfig = [];
+        if (! is_dir($configPath)) {
+            return $allConfig;
+        }
+
         $iterator = new RecursiveIteratorIterator(
             new RecursiveDirectoryIterator($configPath, FilesystemIterator::FOLLOW_SYMLINKS)
         );
