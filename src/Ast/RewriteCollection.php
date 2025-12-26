@@ -12,16 +12,27 @@ declare (strict_types=1);
 
 namespace Vzina\Attributes\Ast;
 
-use Illuminate\Support\Str;
-
 class RewriteCollection
 {
     public const CLASS_LEVEL = 1;
+
     public const METHOD_LEVEL = 2;
 
+    /**
+     * Which methods can be rewritten.
+     */
     protected array $methods = [];
+
+    /**
+     * Method pattern.
+     */
     protected array $pattern = [];
+
+    /**
+     * Rewrite level.
+     */
     protected int $level = self::METHOD_LEVEL;
+
     protected array $shouldNotRewriteMethods = [
         '__construct',
     ];
@@ -30,12 +41,19 @@ class RewriteCollection
     {
     }
 
-    public function add(string|array $methods): self
+    /**
+     * @param string|string[] $methods
+     */
+    public function add($methods): self
     {
-        foreach ((array)$methods as $method) {
-            $this->methods[] = str_contains($method, '*')
-                ? sprintf("/^%s$/", str_replace(['*', '\\'], ['.*', '\\\\'], $method))
-                : $method;
+        $methods = (array)$methods;
+        foreach ($methods as $method) {
+            if (! str_contains($method, '*')) {
+                $this->methods[] = $method;
+            } else {
+                $preg = str_replace(['*', '\\'], ['.*', '\\\\'], $method);
+                $this->pattern[] = "/^{$preg}$/";
+            }
         }
 
         return $this;
@@ -43,11 +61,24 @@ class RewriteCollection
 
     public function shouldRewrite(string $method): bool
     {
-        return match (true) {
-            $this->level === self::CLASS_LEVEL => ! in_array($method, $this->shouldNotRewriteMethods, true),
-            in_array($method, $this->methods, true) || Str::isMatch($this->pattern, $method) => true,
-            default => false,
-        };
+        if ($this->level === self::CLASS_LEVEL) {
+            if (in_array($method, $this->shouldNotRewriteMethods)) {
+                return false;
+            }
+            return true;
+        }
+
+        if (in_array($method, $this->methods)) {
+            return true;
+        }
+
+        foreach ($this->pattern as $pattern) {
+            if (preg_match($pattern, $method)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function setLevel(int $level): self
