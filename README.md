@@ -206,6 +206,20 @@ class OrderStats
 // 使用方法
 //OrderStats::getMessage(OrderStats::SUCCESS)
 
+#[Constants]
+enum OrderStatsEnum
+{
+    use ConstantsTrait
+    
+    /**
+     * @Message("完成")
+     */
+    case SUCCESS = 1;
+}
+
+// 使用方法
+//OrderStatsEnum::getMessage(OrderStatsEnum::SUCCESS)
+
 ```
 ### 8. 切面（@Aspect）
 
