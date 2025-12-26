@@ -207,7 +207,7 @@ class OrderStats
 //OrderStats::getMessage(OrderStats::SUCCESS)
 
 ```
-### 7. 切面（@Aspect）
+### 8. 切面（@Aspect）
 
 > 注意使用切面前需要生成项目的自动加载（autoload）文件 `composer dump-autoload -o`
 
