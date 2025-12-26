@@ -19,10 +19,14 @@
   },
   "autoload": {
     "psr-4": {
-      "Vzina\\Attributes\\": "src"
+      "Vzina\\Attributes\\": "src",
+      "Vzina\\Attributes\\Tests\\": "test"
     },
     "files": [
       "bootstrap.php"
     ]
+  },
+  "require-dev": {
+    "phpunit/phpunit": "^9.6"
   }
 }
