@@ -6,7 +6,7 @@ Attributes 是适配 Webman 框架的轻量级 PHP 注解工具，通过简单�
 
 ## 二、环境要求
 
-- PHP 8.0+（需支持原生 Attribute 注解）
+- PHP 8.1+
 - Webman 框架 >= 2.1
 
 ## 三、安装插件
