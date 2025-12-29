@@ -37,4 +37,9 @@ class InjectPropertyHandler implements PropertyHandlerInterface
             $attribute->required && throw $e;
         }
     }
+
+    public function getAttribute(): string
+    {
+        return Inject::class;
+    }
 }

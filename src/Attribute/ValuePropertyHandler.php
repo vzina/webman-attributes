@@ -26,4 +26,9 @@ class ValuePropertyHandler implements PropertyHandlerInterface
             default => null
         });
     }
+
+    public function getAttribute(): string
+    {
+        return Value::class;
+    }
 }

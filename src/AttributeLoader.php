@@ -46,12 +46,12 @@ class AttributeLoader
         }
 
         // 注册属性注入逻辑
-        foreach ($option->propertyHandlers() as $attribute => $propertyHandler) {
-            if (class_exists($attribute) &&
-                class_exists($propertyHandler) &&
-                in_array(PropertyHandlerInterface::class, class_implements($propertyHandler), true)
+        foreach ($option->propertyHandlers() as $propertyHandler) {
+            if (class_exists($propertyHandler) &&
+                ($instance = new $propertyHandler) &&
+                $instance instanceof PropertyHandlerInterface
             ) {
-                PropertyManagerCollector::register($attribute, new $propertyHandler);
+                PropertyManagerCollector::register($instance->getAttribute(), $instance);
             }
         }
 
@@ -68,11 +68,18 @@ class AttributeLoader
 
     protected static function initOptions(): ?Options
     {
-        // 加载基础配置
-        $allConfig = static::loadFromDir(config_path(), ['attribute']);
-        if (empty($allConfig['plugin']['vzina']['attributes']['attribute']['autoload'])) {
+        $file = config_path('plugin/vzina/attributes/app.php');
+        if (! file_exists($file)) {
             return null;
         }
+
+        $app = (array)include $file;
+        if (empty($app) || empty($app['enable']) || empty($app['autoload'])) {
+            return null;
+        }
+
+        // 加载基础配置
+        $allConfig = static::loadFromDir(config_path(), ['attribute']);
 
         // 加载插件配置
         $pluginDir = base_path() . '/plugin';
@@ -94,7 +101,7 @@ class AttributeLoader
             }
         }
 
-        return Options::init($config);
+        return Options::init($app + $config);
     }
 
     protected static function loadFromDir(string $configPath, array $onlyFiles = []): array
@@ -110,8 +117,10 @@ class AttributeLoader
 
         foreach ($iterator as $file) {
             // 过滤非PHP文件、指定文件列表外的文件
-            if ($file->isDir() || $file->getExtension() !== 'php' ||
-                ($onlyFiles && ! in_array($file->getBasename('.php'), $onlyFiles))) {
+            if ($file->isDir() ||
+                $file->getExtension() !== 'php' ||
+                ($onlyFiles && ! in_array($file->getBasename('.php'), $onlyFiles))
+            ) {
                 continue;
             }
 

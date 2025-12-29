@@ -11,7 +11,6 @@
 declare (strict_types=1);
 
 return [
-    'autoload' => true, // 是否自动加载
     'scan_path' => [ // 扫描目录
         app_path(),
         // 组件目录
@@ -39,8 +38,8 @@ return [
         Vzina\Attributes\Attribute\CacheableAspect::class,
     ],
     'property_handlers' => [ // 注册属性注入处理器
-        Vzina\Attributes\Attribute\Inject::class => Vzina\Attributes\Attribute\InjectPropertyHandler::class,
-        Vzina\Attributes\Attribute\Value::class => Vzina\Attributes\Attribute\ValuePropertyHandler::class,
+        Vzina\Attributes\Attribute\InjectPropertyHandler::class,
+        Vzina\Attributes\Attribute\ValuePropertyHandler::class,
     ],
     'ast_visitors' => [ // 注册AST访问器
         Vzina\Attributes\Ast\AstPropertyVisitor::class,

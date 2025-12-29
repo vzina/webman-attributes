@@ -14,5 +14,6 @@ namespace Vzina\Attributes\Attribute;
 
 interface PropertyHandlerInterface
 {
+    public function getAttribute(): string;
     public function __invoke(object $object, string $currentClass, string $targetClass, string $property, AttributeInterface $attribute);
 }
