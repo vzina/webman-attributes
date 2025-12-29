@@ -260,3 +260,21 @@ var_dump($r->getStatusCode());
 //int(200)
 
 ```
+
+### 9. 自定义进程（@Process）
+
+```php
+namespace app\process;
+
+use Vzina\Attributes\Attribute\Process;
+
+#[Process(name: 'test-worker')]
+class Test
+{
+    public function onWorkerStart(): void
+    {
+        
+    }
+}
+
+```
