@@ -13,6 +13,9 @@ Attributes 是适配 Webman 框架的轻量级 PHP 注解工具，通过简单�
 
 ```shell
 composer require -W vzina/attributes
+
+# 热更启动，建议仅在开发环境使用
+./webman server:watch start
 ```
 
 ## 四、基础使用
