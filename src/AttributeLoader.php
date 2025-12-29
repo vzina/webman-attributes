@@ -119,7 +119,7 @@ class AttributeLoader
             if (! is_file($appConfigFile)) continue;
 
             // 检查app配置是否启用
-            $relativePath = str_replace($configPath . DIRECTORY_SEPARATOR, '', $file->getRealPath());
+            $relativePath = str_replace($configPath . DIRECTORY_SEPARATOR, '', $file->getPathname());
             $sections = array_reverse(explode(DIRECTORY_SEPARATOR, substr($relativePath, 0, -4)));
 
             if (count($sections) >= 2) {
