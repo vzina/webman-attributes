@@ -13,6 +13,7 @@ declare (strict_types=1);
 namespace Vzina\Attributes\Collector;
 
 use BackedEnum;
+use PHPUnit\TextUI\XmlConfiguration\Constant;
 use Symfony\Component\Translation\Translator;
 use UnitEnum;
 use Webman\Config;
@@ -33,10 +34,17 @@ class ConstantsCollector extends MetadataCollector
         }
 
         $code = array_shift($arguments);
-        if ($code instanceof BackedEnum) {
-            $code = $code->value;
-        } elseif ($code instanceof UnitEnum) {
-            $code = $code->name;
+        if (is_object($code)) {
+            $code = match (true) {
+                $code instanceof BackedEnum => $code->value,
+                $code instanceof UnitEnum => $code->name,
+                method_exists($code, '__getConstantsCode') => $code->__getConstantsCode(),
+                default => null,
+            };
+
+            if ($code === null) {
+                return null;
+            }
         }
 
         $message = static::getValue($className, $code, $key);

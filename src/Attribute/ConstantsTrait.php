@@ -12,6 +12,7 @@ declare (strict_types=1);
 
 namespace Vzina\Attributes\Attribute;
 
+use UnitEnum;
 use Vzina\Attributes\Collector\ConstantsCollector;
 
 /**
@@ -28,5 +29,12 @@ trait ConstantsTrait
         $name = strtolower(substr($name, 3));
 
         return ConstantsCollector::getTransValue(static::class, $name, $arguments);
+    }
+
+    public function __call(string $name, array $arguments)
+    {
+        array_unshift($arguments, $this);
+
+        return self::__callStatic($name, $arguments);
     }
 }
