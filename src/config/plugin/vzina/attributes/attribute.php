@@ -45,4 +45,6 @@ return [
         Vzina\Attributes\Ast\AstPropertyVisitor::class,
         Vzina\Attributes\Ast\AstProxyCallVisitor::class,
     ],
+    'ast_proxy_loaders' => [ // 自定义代理加载器
+    ],
 ];

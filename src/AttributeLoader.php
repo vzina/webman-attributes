@@ -17,6 +17,7 @@ use PhpParser\NodeVisitor;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use support\Container;
+use vendor\vzina\attributes\src\Ast\ProxyLoaderInterface;
 use Vzina\Attributes\Ast\AstVisitorManager;
 use Vzina\Attributes\Attribute\PropertyHandlerInterface;
 use Vzina\Attributes\Collector\PropertyManagerCollector;
@@ -55,7 +56,18 @@ class AttributeLoader
             }
         }
 
-        $loader->addClassMap((new Scanner($option))->scan($loader->getClassMap()));
+        $classMap = (new Scanner($option))->scan($loader->getClassMap());
+        // 加载定义的代理加载器
+        foreach ($option->astProxyLoaders() as $proxyLoader) {
+            if (class_exists($proxyLoader) &&
+                ($instance = new $proxyLoader) &&
+                $instance instanceof ProxyLoaderInterface
+            ) {
+                $classMap = array_merge($classMap, $instance($option));
+            }
+        }
+
+        $loader->addClassMap($classMap);
     }
 
     /**
@@ -104,7 +116,7 @@ class AttributeLoader
         return Options::init($app + $config);
     }
 
-    protected static function loadFromDir(string $configPath, array $onlyFiles = []): array
+    public static function loadFromDir(string $configPath, array $onlyFiles = []): array
     {
         $allConfig = [];
         if (! is_dir($configPath)) {

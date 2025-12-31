@@ -28,7 +28,7 @@ composer require -W vzina/attributes
 namespace app\controller;
 
 use Vzina\Attributes\Attribute\Inject;
-use app\service\UserService;
+use app\Service\UserService;
 
 class UserController
 {

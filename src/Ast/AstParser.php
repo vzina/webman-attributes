@@ -60,8 +60,8 @@ class AstParser
         'object', 'resource', 'mixed', 'null',
     ];
 
-    private Parser $parser;
-    private PrettyPrinterAbstract $printer;
+    protected Parser $parser;
+    protected PrettyPrinterAbstract $printer;
 
     private static ?self $instance = null;
 
@@ -74,9 +74,9 @@ class AstParser
     /**
      * 单例模式获取实例
      */
-    public static function getInstance(): self
+    public static function getInstance(): static
     {
-        return self::$instance ??= new self();
+        return self::$instance ??= new static();
     }
 
     /**

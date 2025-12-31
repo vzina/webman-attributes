@@ -34,8 +34,18 @@ class Composer
 
     public static function getCodeByClassName(string $className): string
     {
-        $file = self::getLoader()->findFile($className);
+        $file = self::getPathByClassName($className);
         return $file ? file_get_contents($file) : '';
+    }
+
+    public static function getPathByClassName(string $className): string
+    {
+        return (string)self::getLoader()->findFile($className);
+    }
+
+    public static function getMd5ByClassName(string $className): string
+    {
+        return md5(self::getCodeByClassName($className));
     }
 
     private static function findLoader(): ClassLoader

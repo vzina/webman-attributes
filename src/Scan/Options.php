@@ -95,6 +95,11 @@ class Options
         return (array)($this->options['property_handlers'] ?? []);
     }
 
+    public function astProxyLoaders(): array
+    {
+        return (array)($this->options['ast_proxy_loaders'] ?? []);
+    }
+
     public function classMap(): array
     {
         return (array)($this->options['class_map'] ?? []);
