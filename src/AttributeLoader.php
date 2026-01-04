@@ -13,6 +13,7 @@ declare (strict_types=1);
 namespace Vzina\Attributes;
 
 use FilesystemIterator;
+use Illuminate\Support\Arr;
 use PhpParser\NodeVisitor;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
@@ -89,18 +90,30 @@ class AttributeLoader
         if (empty($app) || empty($app['enable']) || empty($app['autoload'])) {
             return null;
         }
+        $config = static::loadAllFromDir(['attribute']);
+
+        return Options::init($app + $config);
+    }
+
+    public static function loadAllFromDir(array $onlyFiles): array
+    {
+        if (empty($onlyFiles)) {
+            return [];
+        }
 
         // 加载基础配置
-        $allConfig = static::loadFromDir(config_path(), ['attribute']);
+        $allConfig = static::loadFromDir(config_path(), $onlyFiles);
 
         // 加载插件配置
-        $pluginDir = base_path() . '/plugin';
+        $pluginDir = base_path('plugin');
         foreach (Util::scanDir($pluginDir, false) as $name) {
             $pluginConfigDir = "$pluginDir/$name/config";
             if (is_dir($pluginConfigDir)) {
-                $pluginConfig = static::loadFromDir($pluginConfigDir, ['attribute']);
-                if (! empty($pluginConfig['attribute'])) {
-                    $allConfig = array_merge_recursive($allConfig, $pluginConfig);
+                $pluginConfig = static::loadFromDir($pluginConfigDir, $onlyFiles);
+                if (Arr::has($pluginConfig, $onlyFiles)) {
+                    foreach ($onlyFiles as $file) {
+                        $allConfig = array_merge_recursive($allConfig, $pluginConfig[$file]);
+                    }
                 }
             }
         }
@@ -108,12 +121,18 @@ class AttributeLoader
         // 合并插件attribute配置
         $config = [];
         foreach ($allConfig['plugin'] ?? [] as $projectConfigs) {
+            if (! is_array($projectConfigs)) {
+                continue;
+            }
             foreach ($projectConfigs as $project) {
-                ! empty($project['attribute']) && $config = array_merge_recursive($config, $project['attribute']);
+                if (Arr::has($project, $onlyFiles)) {
+                    foreach ($onlyFiles as $file) {
+                        $config = array_merge_recursive($config, $project[$file]);
+                    }
+                }
             }
         }
-
-        return Options::init($app + $config);
+        return $config;
     }
 
     public static function loadFromDir(string $configPath, array $onlyFiles = []): array
