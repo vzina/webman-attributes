@@ -1,4 +1,4 @@
-# Attributes 简易使用文档
+# Attributes 使用文档
 
 ## 一、工具简介
 
@@ -69,6 +69,9 @@ class OrderService
 ### 3. 定时任务（@Crontab）
 
 通过注解定义定时任务。
+
+> composer require -W workerman/crontab:^1.0 
+
 ```php
 namespace app\crontab;
 

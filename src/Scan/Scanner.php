@@ -16,6 +16,7 @@ use Illuminate\Filesystem\Filesystem;
 use ReflectionClass;
 use Vzina\Attributes\Ast\AspectLoader;
 use Vzina\Attributes\Ast\AstParser;
+use Vzina\Attributes\Ast\ProxyLoaderInterface;
 use Vzina\Attributes\Ast\ProxyManager;
 use Vzina\Attributes\Attribute\Aspect;
 use Vzina\Attributes\Attribute\AttributeInterface;
@@ -77,18 +78,25 @@ class Scanner
 
         $this->loadAspects($lastCacheModified);
 
+        // Get the class map of Composer loader
+        $classMap = array_merge($reflectionClassMap, $classMap);
+
+        foreach ($this->option->astProxyLoaders() as $proxyLoader) {
+            if (class_exists($proxyLoader) &&
+                ($instance = new $proxyLoader) &&
+                $instance instanceof ProxyLoaderInterface
+            ) {
+                $instance($this->option, $classMap);
+            }
+        }
+
         $data = [];
         /** @var MetadataCollector|string $collector */
         foreach ($collectors as $collector) {
             $data[$collector] = $collector::serialize();
         }
 
-        // Get the class map of Composer loader
-        $classMap = array_merge($reflectionClassMap, $classMap);
-        $proxyManager = new ProxyManager($classMap, $proxyDir);
-        $proxies = $proxyManager->getProxies();
-
-        $this->filesystem->put($cacheFile, serialize([$data, $proxies]));
+        $this->filesystem->put($cacheFile, serialize([$data, $classMap]));
         $scanner->finish();
 
         return $proxies;

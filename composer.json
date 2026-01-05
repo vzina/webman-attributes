@@ -15,7 +15,6 @@
     "webman/console": "^2.1",
     "webman/event": "^1.0",
     "webman/redis": "^2.1",
-    "workerman/crontab": "^1.0",
     "workerman/webman-framework": "^2.0"
   },
   "autoload": {

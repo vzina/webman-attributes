@@ -18,7 +18,6 @@ use PhpParser\NodeVisitor;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use support\Container;
-use vendor\vzina\attributes\src\Ast\ProxyLoaderInterface;
 use Vzina\Attributes\Ast\AstVisitorManager;
 use Vzina\Attributes\Attribute\PropertyHandlerInterface;
 use Vzina\Attributes\Collector\PropertyManagerCollector;
@@ -58,16 +57,6 @@ class AttributeLoader
         }
 
         $classMap = (new Scanner($option))->scan($loader->getClassMap());
-        // 加载定义的代理加载器
-        foreach ($option->astProxyLoaders() as $proxyLoader) {
-            if (class_exists($proxyLoader) &&
-                ($instance = new $proxyLoader) &&
-                $instance instanceof ProxyLoaderInterface
-            ) {
-                $classMap = array_merge($classMap, $instance($option));
-            }
-        }
-
         $loader->addClassMap($classMap);
     }
 

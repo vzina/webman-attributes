@@ -29,8 +29,6 @@ use PhpParser\Node\Stmt\Namespace_;
 use PhpParser\Node\Stmt\Trait_;
 use PhpParser\Node\Stmt\TraitUse;
 use PhpParser\Node\UnionType;
-use PhpParser\NodeTraverser;
-use PhpParser\NodeVisitor\NameResolver;
 use PhpParser\Parser;
 use PhpParser\ParserFactory;
 use PhpParser\PrettyPrinter\Standard;
@@ -42,28 +40,14 @@ use ReflectionParameter;
 use ReflectionType;
 use ReflectionUnionType;
 use Symfony\Component\Finder\Finder;
-use Vzina\Attributes\Ast\LazyLoader\AbstractLazyProxyBuilder;
-use Vzina\Attributes\Ast\LazyLoader\ClassLazyProxyBuilder;
-use Vzina\Attributes\Ast\LazyLoader\FallbackLazyProxyBuilder;
-use Vzina\Attributes\Ast\LazyLoader\InterfaceLazyProxyBuilder;
-use Vzina\Attributes\Ast\LazyLoader\PublicMethodVisitor;
-use Vzina\Attributes\Reflection\Composer;
 use Vzina\Attributes\Reflection\ReflectionManager;
 
 class AstParser
 {
-    /**
-     * 基础PHP类型列表
-     */
-    public const BUILTIN_TYPES = [
-        'int', 'float', 'string', 'bool', 'array',
-        'object', 'resource', 'mixed', 'null',
-    ];
-
     protected Parser $parser;
     protected PrettyPrinterAbstract $printer;
 
-    private static ?self $instance = null;
+    protected static $instance;
 
     public function __construct()
     {
@@ -76,7 +60,7 @@ class AstParser
      */
     public static function getInstance(): static
     {
-        return self::$instance ??= new static();
+        return static::$instance ??= new static();
     }
 
     /**
@@ -85,6 +69,11 @@ class AstParser
     public function parse(string $code): ?array
     {
         return $this->parser->parse($code);
+    }
+
+    public function prettyPrintFile(array $modifiedStmts): string
+    {
+        return $this->printer->prettyPrintFile($modifiedStmts);
     }
 
     /**
@@ -104,60 +93,6 @@ class AstParser
         }
 
         return '';
-    }
-
-    /**
-     * 生成代理类代码
-     */
-    public function proxy(string $className): string
-    {
-        $code = Composer::getCodeByClassName($className);
-        $stmts = $this->parse($code);
-
-        $traverser = new NodeTraverser();
-        $visitorMetadata = new AstVisitorMetadata($className);
-
-        // 遍历并应用所有AST访问器
-        foreach (clone AstVisitorManager::getQueue() as $visitorClass) {
-            $traverser->addVisitor(new $visitorClass($visitorMetadata));
-        }
-
-        $modifiedStmts = $traverser->traverse($stmts);
-
-        return $this->printer->prettyPrintFile($modifiedStmts);
-    }
-
-    public function lazyProxy(string $proxy, string $target): string
-    {
-        $ref = new ReflectionClass($target);
-        if ($ref->isFinal()) {
-            $builder = new FallbackLazyProxyBuilder();
-            return $this->buildNewCode($builder, $proxy, $ref);
-        }
-        if ($ref->isInterface()) {
-            $builder = new InterfaceLazyProxyBuilder();
-            return $this->buildNewCode($builder, $proxy, $ref);
-        }
-        $builder = new ClassLazyProxyBuilder();
-
-        return $this->buildNewCode($builder, $proxy, $ref);
-    }
-
-    private function buildNewCode(AbstractLazyProxyBuilder $builder, string $proxy, ReflectionClass $ref): string
-    {
-        $target = $ref->getName();
-        $nodes = $this->getNodesFromReflectionClass($ref);
-        $builder->addClassBoilerplate($proxy, $target);
-        $builder->addClassRelationship();
-        $traverser = new NodeTraverser();
-        $methods = $this->getAllMethodsFromStmts($nodes);
-        $visitor = new PublicMethodVisitor($methods, $builder->getOriginalClassName());
-        $traverser->addVisitor(new NameResolver());
-        $traverser->addVisitor($visitor);
-        $traverser->traverse($nodes);
-        $builder->addNodes($visitor->nodes);
-
-        return (new Standard())->prettyPrintFile([$builder->getNode()]);
     }
 
     /**

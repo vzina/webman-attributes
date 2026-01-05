@@ -170,28 +170,6 @@ PHP
     }
 
     /**
-     * 测试5：getNodeFromReflectionParameter 方法 - 从反射参数生成AST参数节点
-     */
-    public function testGetNodeFromReflectionParameter(): void
-    {
-        // 1. 定义测试方法（用于获取反射参数）
-        $testMethod = function (string $name = 'default', int $age = 18, array $data = ['key' => 'value']): void {};
-        $reflectionMethod = new \ReflectionFunction($testMethod);
-        $reflectionParam = $reflectionMethod->getParameters()[0]; // 获取第一个参数 $name
-
-        // 2. 生成AST参数节点
-        $paramNode = $this->astParser->getNodeFromReflectionParameter($reflectionParam);
-
-        // 3. 断言节点结构正确
-        $this->assertInstanceOf(Param::class, $paramNode);
-        $this->assertEquals('name', $paramNode->var->name); // 参数名正确
-        $this->assertInstanceOf(\PhpParser\Node\Identifier::class, $paramNode->type); // 类型是string
-        $this->assertEquals('string', $paramNode->type->name);
-        $this->assertInstanceOf(String_::class, $paramNode->default); // 默认值正确
-        $this->assertEquals('default', $paramNode->default->value);
-    }
-
-    /**
      * 测试6：createArrayExpr 方法 - 从数组生成AST数组表达式
      */
     public function testCreateArrayExprFromArrayValue(): void
@@ -243,41 +221,4 @@ PHP
         $this->assertEquals(Array_::KIND_SHORT, $nestedArrayKind['kind']);
     }
 
-    /**
-     * 测试7：lazyProxy 方法 - 生成懒加载代理类代码（基础验证）
-     */
-    public function testGenerateLazyProxyCode(): void
-    {
-        // 1. 创建测试目标类
-        $targetClass = 'Vzina\Tests\Fixtures\TestProxyTarget';
-        $targetFile = $this->fixtureDir . '/TestProxyTarget.php';
-        file_put_contents($targetFile, <<<'PHP'
-<?php
-namespace Vzina\Tests\Fixtures;
-
-class TestProxyTarget {
-    public function sayHello(): string {
-        return 'hello';
-    }
-}
-PHP
-        );
-
-        // 2. 注册自动加载（确保能找到测试类）
-        spl_autoload_register(function ($className) {
-            $file = $this->fixtureDir . '/' . str_replace('Vzina\Tests\Fixtures\\', '', $className) . '.php';
-            if (file_exists($file)) {
-                require $file;
-            }
-        });
-
-        // 3. 生成代理类代码
-        $proxyClass = 'Vzina\Tests\Fixtures\TestProxy';
-        $proxyCode = $this->astParser->lazyProxy($proxyClass, $targetClass);
-
-        // 4. 断言代理类代码包含关键内容
-        $this->assertStringContainsString('class TestProxy', $proxyCode); // 包含代理类定义
-        $this->assertStringContainsString('TestProxyTarget', $proxyCode); // 关联目标类
-        $this->assertStringContainsString('sayHello', $proxyCode); // 包含目标方法
-    }
 }

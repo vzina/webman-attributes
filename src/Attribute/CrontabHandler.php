@@ -20,10 +20,6 @@ class CrontabHandler
 {
     public function onWorkerStart(): void
     {
-        if (! class_exists(WorkermanCrontab::class)) {
-            return;
-        }
-
         $container = Container::instance();
         $methodAttributes = AttributeCollector::getMethodsByAttribute(Crontab::class);
         foreach ($methodAttributes as $methodAttribute) {

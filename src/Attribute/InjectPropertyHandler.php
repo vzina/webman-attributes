@@ -14,6 +14,7 @@ namespace Vzina\Attributes\Attribute;
 
 use RuntimeException;
 use Throwable;
+use Vzina\Attributes\Ast\LazyLoader\LazyLoader;
 use Vzina\Attributes\Ast\ProxyManager;
 use Vzina\Attributes\AttributeLoader;
 use Vzina\Attributes\Reflection\ReflectionManager;
@@ -27,7 +28,7 @@ class InjectPropertyHandler implements PropertyHandlerInterface
             $refProp = ReflectionManager::reflectProperty($currentClass, $property);
 
             // 处理懒加载代理类名
-            $injectClass = $attribute->lazy ? ProxyManager::lazyName($attribute->value) : $attribute->value;
+            $injectClass = $attribute->lazy ? LazyLoader::lazyName($attribute->value) : $attribute->value;
             if ($instance = $container->get($injectClass)) {
                 $refProp->setValue($object, $instance);
             } elseif ($attribute->required) {
