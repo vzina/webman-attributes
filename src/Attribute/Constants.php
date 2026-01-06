@@ -13,17 +13,16 @@ declare (strict_types=1);
 namespace Vzina\Attributes\Attribute;
 
 use Attribute;
-use ReflectionClass;
 use Vzina\Attributes\Collector\ConstantsCollector;
 use Vzina\Attributes\Reflection\AttributeReader;
+use Vzina\Attributes\Reflection\ReflectionManager;
 
 #[Attribute(Attribute::TARGET_CLASS)]
 class Constants extends AbstractAttribute
 {
     public function collectClass(string $className): void
     {
-        $reader = new AttributeReader();
-        $data = $reader->getConstants(new ReflectionClass($className));
+        $data = AttributeReader::getConstants(ReflectionManager::reflectClass($className));
 
         ConstantsCollector::set($className, $data);
     }

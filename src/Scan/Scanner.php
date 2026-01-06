@@ -14,32 +14,23 @@ namespace Vzina\Attributes\Scan;
 
 use Illuminate\Filesystem\Filesystem;
 use ReflectionClass;
-use Vzina\Attributes\Ast\AspectLoader;
 use Vzina\Attributes\Ast\AstParser;
 use Vzina\Attributes\Ast\ProxyLoaderInterface;
-use Vzina\Attributes\Ast\ProxyManager;
-use Vzina\Attributes\Attribute\Aspect;
 use Vzina\Attributes\Attribute\AttributeInterface;
-use Vzina\Attributes\Collector\AspectCollector;
-use Vzina\Attributes\Collector\AttributeCollector;
 use Vzina\Attributes\Collector\MetadataCollector;
 use Vzina\Attributes\Reflection\AttributeReader;
-use Vzina\Attributes\Reflection\Composer;
 
 class Scanner
 {
-    private Filesystem $filesystem;
-    private AttributeReader $reader;
+    protected Filesystem $filesystem;
 
     public function __construct(protected Options $option)
     {
         $this->filesystem = new Filesystem();
-        $this->reader = new AttributeReader();
     }
 
     public function scan(array $classMap = []): array
     {
-        $proxyDir = $this->option->proxyPath();
         $paths = $this->option->scanPath();
         $collectors = $this->option->collectors();
         if (! $paths) {
@@ -76,11 +67,7 @@ class Scanner
             }
         }
 
-        $this->loadAspects($lastCacheModified);
-
-        // Get the class map of Composer loader
         $classMap = array_merge($reflectionClassMap, $classMap);
-
         foreach ($this->option->astProxyLoaders() as $proxyLoader) {
             if (class_exists($proxyLoader) &&
                 ($instance = new $proxyLoader) &&
@@ -109,14 +96,14 @@ class Scanner
             return;
         }
 
-        foreach ($this->reader->getAttributes($reflection) as $classAttribute) {
+        foreach (AttributeReader::getAttributes($reflection) as $classAttribute) {
             if ($classAttribute instanceof AttributeInterface) {
                 $classAttribute->collectClass($className);
             }
         }
 
         foreach ($reflection->getProperties() as $property) {
-            foreach ($this->reader->getAttributes($property) as $propertyAttribute) {
+            foreach (AttributeReader::getAttributes($property) as $propertyAttribute) {
                 if ($propertyAttribute instanceof AttributeInterface) {
                     $propertyAttribute->collectProperty($className, $property->getName());
                 }
@@ -124,7 +111,7 @@ class Scanner
         }
 
         foreach ($reflection->getMethods() as $method) {
-            foreach ($this->reader->getAttributes($method) as $methodAttribute) {
+            foreach (AttributeReader::getAttributes($method) as $methodAttribute) {
                 if ($methodAttribute instanceof AttributeInterface) {
                     $methodAttribute->collectMethod($className, $method->getName());
                 }
@@ -132,7 +119,7 @@ class Scanner
         }
 
         foreach ($reflection->getReflectionConstants() as $classConstant) {
-            foreach ($this->reader->getAttributes($classConstant) as $constantAttribute) {
+            foreach (AttributeReader::getAttributes($classConstant) as $constantAttribute) {
                 if ($constantAttribute instanceof AttributeInterface) {
                     $constantAttribute->collectClassConstant($className, $classConstant->getName());
                 }
@@ -177,62 +164,5 @@ class Scanner
                 $collector::clear($class);
             }
         }
-    }
-
-    protected function loadAspects(int $lastCacheModified): void
-    {
-        $aspects = $this->option->aspects();
-
-        [$removed, $changed] = $this->getChangedAspects($aspects, $lastCacheModified);
-        foreach ($removed as $aspect) {
-            AspectCollector::clear($aspect);
-        }
-
-        foreach ($aspects as $key => $value) {
-            [$aspect, $priority] = is_numeric($key) ? [$value, null] : [$key, (int)$value];
-            if (! in_array($aspect, $changed, true)) {
-                continue;
-            }
-
-            AspectLoader::collect($aspect, ['priority' => $priority]);
-        }
-    }
-
-    protected function getChangedAspects(array $aspects, int $lastCacheModified): array
-    {
-        $path = $this->option->cachePath() . '/aspects.cache';
-        $classes = [];
-        foreach ($aspects as $key => $value) {
-            $classes[] = is_numeric($key) ? $value : $key;
-        }
-
-        $data = [];
-        if ($this->filesystem->exists($path)) {
-            $data = unserialize($this->filesystem->get($path));
-        }
-
-        $this->filesystem->put($path, serialize($classes));
-
-        $diff = array_diff($data, $classes);
-        $changed = array_diff($classes, $data);
-        $removed = [];
-        foreach ($diff as $item) {
-            $annotation = AttributeCollector::getClassAttribute($item, Aspect::class);
-            if (is_null($annotation)) {
-                $removed[] = $item;
-            }
-        }
-
-        $loader = Composer::getLoader();
-        foreach ($classes as $class) {
-            if (($file = $loader->findFile($class)) && $lastCacheModified <= $this->filesystem->lastModified($file)) {
-                $changed[] = $class;
-            }
-        }
-
-        return [
-            array_values(array_unique($removed)),
-            array_values(array_unique($changed)),
-        ];
     }
 }

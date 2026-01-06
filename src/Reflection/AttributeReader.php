@@ -24,7 +24,7 @@ use RuntimeException;
 
 class AttributeReader
 {
-    public function getAttributes(Reflector $reflection, array $ignores = []): array
+    public static function getAttributes(Reflector $reflection, array $ignores = []): array
     {
         $result = [];
         $attributes = $reflection->getAttributes();
@@ -53,7 +53,7 @@ class AttributeReader
         return $result;
     }
 
-    public function getConstants(ReflectionClass $reflection): array
+    public static function getConstants(ReflectionClass $reflection): array
     {
         $result = [];
         $classConstants = $reflection->getReflectionConstants();
@@ -65,13 +65,26 @@ class AttributeReader
 
             $docComment = $classConstant->getDocComment();
             if ($docComment && (is_int($code) || is_string($code))) {
-                $result[$code] = $this->parse($docComment, $result[$code] ?? []);
+                $result[$code] = static::parse($docComment, $result[$code] ?? []);
             }
         }
         return $result;
     }
 
-    protected function parse(string $doc, array $previous): array
+    public static function getPropertyClass(string $class, string $property): ?string
+    {
+        $reflectionClass = ReflectionManager::reflectClass($class);
+        $reflectionProperty = $reflectionClass->getProperty($property);
+
+        if (method_exists($reflectionProperty, 'hasType') && $reflectionProperty->hasType()) {
+            /* @phpstan-ignore-next-line */
+            return $reflectionProperty->getType()?->getName();
+        }
+
+        return ReflectionManager::getPhpDocReader()->getPropertyClass($reflectionProperty);
+    }
+
+    protected static function parse(string $doc, array $previous): array
     {
         $pattern = '/@(\w+)\("(.+)"\)/U';
         if (preg_match_all($pattern, $doc, $result)) {

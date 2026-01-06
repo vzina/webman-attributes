@@ -5,6 +5,7 @@ declare (strict_types=1);
 namespace Vzina\Attributes\Ast;
 
 use PhpParser\NodeTraverser;
+use Vzina\Attributes\Attribute\Aspect;
 use Vzina\Attributes\Collector\AspectCollector;
 use Vzina\Attributes\Collector\AttributeCollector;
 use Vzina\Attributes\Reflection\Composer;
@@ -18,6 +19,9 @@ class AspectProxyLoader implements ProxyLoaderInterface
         $astParser = AstParser::getInstance();
         $originalClassMap = $classMap;
         $proxyDir = $option->proxyPath();
+        $cacheFile = $option->cachePath() . '/aspects.cache';
+
+        $this->loadAspects($option->aspects(), $cacheFile);
 
         foreach ($this->getProxyClasses($originalClassMap) as $className) {
             $proxyFile = path_combine($proxyDir, str_replace('\\', '_', $className) . '.proxy.php');
@@ -122,5 +126,60 @@ class AspectProxyLoader implements ProxyLoaderInterface
         }
 
         return false;
+    }
+
+    protected function loadAspects($aspects, string $cacheFile): void
+    {
+        [$removed, $changed] = $this->getChangedAspects($aspects, $cacheFile);
+        foreach ($removed as $aspect) {
+            AspectCollector::clear($aspect);
+        }
+
+        foreach ($aspects as $key => $value) {
+            [$aspect, $priority] = is_numeric($key) ? [$value, null] : [$key, (int)$value];
+            if (! in_array($aspect, $changed, true)) {
+                continue;
+            }
+
+            AspectLoader::collect($aspect, ['priority' => $priority]);
+        }
+    }
+
+    protected function getChangedAspects(array $aspects, string $cacheFile): array
+    {
+        $classes = [];
+        $lastCacheModified = file_exists($cacheFile) ? filemtime($cacheFile) : 0;
+        foreach ($aspects as $key => $value) {
+            $classes[] = is_numeric($key) ? $value : $key;
+        }
+
+        $data = [];
+        if (file_exists($cacheFile)) {
+            $data = unserialize(file_get_contents($cacheFile));
+        }
+
+        file_put_contents($cacheFile, serialize($classes));
+
+        $diff = array_diff($data, $classes);
+        $changed = array_diff($classes, $data);
+        $removed = [];
+        foreach ($diff as $item) {
+            $annotation = AttributeCollector::getClassAttribute($item, Aspect::class);
+            if (is_null($annotation)) {
+                $removed[] = $item;
+            }
+        }
+
+        $loader = Composer::getLoader();
+        foreach ($classes as $class) {
+            if (($file = $loader->findFile($class)) && $lastCacheModified <= filemtime($file)) {
+                $changed[] = $class;
+            }
+        }
+
+        return [
+            array_values(array_unique($removed)),
+            array_values(array_unique($changed)),
+        ];
     }
 }
