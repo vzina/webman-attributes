@@ -19,14 +19,14 @@ class DependHandler implements Bootstrap
         $queue = new SplPriorityQueue();
         foreach ($depends as $class => $attribute) {
             /** @var Depend $attribute */
-            $queue->insert([$attribute->id ?: $class, $class, $attribute->options], $attribute->priority);
+            $queue->insert([$attribute->id ?: $class, $class], $attribute->priority);
         }
 
         $definitions = [];
         while (! $queue->isEmpty()) {
-            [$id, $class, $options] = (array)$queue->extract();
+            [$id, $class] = (array)$queue->extract();
             if (! isset($definitions[$id])) {
-                $definitions[$id] = static fn() => new $class($options);
+                $definitions[$id] = $class;
             }
         }
 
