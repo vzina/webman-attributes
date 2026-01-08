@@ -21,6 +21,7 @@ use ReflectionMethod;
 use ReflectionProperty;
 use Reflector;
 use RuntimeException;
+use Vzina\Attributes\Attribute\Message;
 
 class AttributeReader
 {
@@ -66,6 +67,13 @@ class AttributeReader
             $docComment = $classConstant->getDocComment();
             if ($docComment && (is_int($code) || is_string($code))) {
                 $result[$code] = static::parse($docComment, $result[$code] ?? []);
+            }
+
+            foreach ($classConstant->getAttributes() as $ref) {
+                $attribute = $ref->newInstance();
+                if ($attribute instanceof Message) {
+                    $result[$code][$attribute->getLowerCaseKey()] = $attribute->value;
+                }
             }
         }
         return $result;

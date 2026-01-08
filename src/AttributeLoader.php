@@ -17,7 +17,6 @@ use Illuminate\Support\Arr;
 use PhpParser\NodeVisitor;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
-use support\Container;
 use Vzina\Attributes\Ast\AstVisitorManager;
 use Vzina\Attributes\Attribute\PropertyHandlerInterface;
 use Vzina\Attributes\Collector\PropertyManagerCollector;
@@ -58,14 +57,6 @@ class AttributeLoader
 
         $classMap = (new Scanner($option))->scan($loader->getClassMap());
         $loader->addClassMap($classMap);
-    }
-
-    /**
-     * @return \Webman\Container
-     */
-    public static function getContainer()
-    {
-        return Container::instance();
     }
 
     protected static function initOptions(): ?Options

@@ -15,11 +15,14 @@ namespace Vzina\Attributes\Attribute;
 use Attribute;
 use PhpDocReader\AnnotationException;
 use Throwable;
+use Vzina\Attributes\Ast\LazyLoader\LazyLoader;
 use Vzina\Attributes\Reflection\AttributeReader;
 
 #[Attribute(Attribute::TARGET_PROPERTY)]
 class Inject extends AbstractAttribute
 {
+    public string $targetValue = '';
+
     public function __construct(
         public ?string $value = null,
         public bool $required = true,
@@ -37,6 +40,8 @@ class Inject extends AbstractAttribute
             if (empty($this->value)) {
                 throw new AnnotationException("The @Inject value is invalid for {$className}->{$target}");
             }
+
+            $this->targetValue = $this->lazy ? LazyLoader::lazyName($this->value) : $this->value;
 
             parent::collectProperty($className, $target);
         } catch (AnnotationException $e) {

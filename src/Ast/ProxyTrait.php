@@ -17,7 +17,7 @@ namespace Vzina\Attributes\Ast;
 use Closure;
 use Illuminate\Pipeline\Pipeline;
 use InvalidArgumentException;
-use Vzina\Attributes\AttributeLoader;
+use support\Container;
 use Vzina\Attributes\Collector\AspectCollector;
 use Vzina\Attributes\Collector\AspectManagerCollector;
 use Vzina\Attributes\Collector\AttributeCollector;
@@ -82,7 +82,7 @@ trait ProxyTrait
                         }
 
                         if (is_string($pipe) && class_exists($pipe)) {
-                            $pipe = AttributeLoader::getContainer()->get($pipe);
+                            $pipe = Container::get($pipe);
                         }
                         $passable->pipe = $stack;
 

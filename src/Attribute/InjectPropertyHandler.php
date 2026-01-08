@@ -13,29 +13,20 @@ declare (strict_types=1);
 namespace Vzina\Attributes\Attribute;
 
 use RuntimeException;
-use Throwable;
-use Vzina\Attributes\Ast\LazyLoader\LazyLoader;
-use Vzina\Attributes\Ast\ProxyManager;
-use Vzina\Attributes\AttributeLoader;
+use support\Container;
 use Vzina\Attributes\Reflection\ReflectionManager;
 
 class InjectPropertyHandler implements PropertyHandlerInterface
 {
     public function __invoke(object $object, string $currentClass, string $targetClass, string $property, AttributeInterface $attribute)
     {
-        try {
-            $container = AttributeLoader::getContainer();
-            $refProp = ReflectionManager::reflectProperty($currentClass, $property);
+        $refProp = ReflectionManager::reflectProperty($currentClass, $property);
 
-            // 处理懒加载代理类名
-            $injectClass = $attribute->lazy ? LazyLoader::lazyName($attribute->value) : $attribute->value;
-            if ($instance = $container->get($injectClass)) {
-                $refProp->setValue($object, $instance);
-            } elseif ($attribute->required) {
-                throw new RuntimeException("No entry or class found for '{$attribute->value}'");
-            }
-        } catch (Throwable $e) {
-            $attribute->required && throw $e;
+        // 处理懒加载代理类名
+        if ($instance = Container::get($attribute->targetValue)) {
+            $refProp->setValue($object, $instance);
+        } elseif ($attribute->required) {
+            throw new RuntimeException("No entry or class found for '{$attribute->value}'");
         }
     }
 

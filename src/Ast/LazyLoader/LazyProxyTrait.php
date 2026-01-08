@@ -12,7 +12,7 @@ declare (strict_types=1);
 
 namespace Vzina\Attributes\Ast\LazyLoader;
 
-use Vzina\Attributes\AttributeLoader;
+use support\Container;
 
 trait LazyProxyTrait
 {
@@ -64,6 +64,6 @@ trait LazyProxyTrait
      */
     public function getInstance()
     {
-        return AttributeLoader::getContainer()->get(self::PROXY_TARGET);
+        return Container::get(self::PROXY_TARGET);
     }
 }

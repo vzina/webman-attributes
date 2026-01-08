@@ -4,11 +4,10 @@ declare (strict_types=1);
 
 namespace Vzina\Attributes\Attribute;
 
-use support\Container;
 use Vzina\Attributes\Ast\SplPriorityQueue;
 use Vzina\Attributes\Collector\AttributeCollector;
+use Vzina\Attributes\Reflection\ServiceInjector;
 use Webman\Bootstrap;
-use Webman\Event\Event;
 use Workerman\Worker;
 
 class DependHandler implements Bootstrap
@@ -31,8 +30,6 @@ class DependHandler implements Bootstrap
             }
         }
 
-        container_definitions($definitions);
-
-        Event::dispatch(BootDepend::class, []);
+        ServiceInjector::inject($definitions);
     }
 }

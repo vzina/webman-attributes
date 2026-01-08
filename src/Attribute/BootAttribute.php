@@ -4,7 +4,7 @@ declare (strict_types=1);
 
 namespace Vzina\Attributes\Attribute;
 
-class BootDepend
+class BootAttribute
 {
 
 }

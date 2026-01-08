@@ -11,7 +11,6 @@ class Depend extends AbstractAttribute
 {
     public function __construct(
         public ?string $id = null,
-        public array $options = [],
         public int $priority = 0
     ) {
     }

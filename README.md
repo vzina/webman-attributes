@@ -281,3 +281,24 @@ class Test
 }
 
 ```
+
+### 9. 依赖服务（@Depend）
+
+```php
+namespace app;
+
+use support\Container;use Vzina\Attributes\Attribute\Depend;
+
+interface TestInterface {}
+
+#[Depend(id: TestInterface::class)]
+class Test
+{
+
+}
+
+// 使用
+$test = Container::get(TestInterface::class);
+var_dump($test);
+
+```
