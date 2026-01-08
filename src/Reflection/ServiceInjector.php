@@ -5,6 +5,7 @@ declare (strict_types=1);
 namespace Vzina\Attributes\Reflection;
 
 use ArrayAccess;
+use Psr\Container\ContainerInterface;
 use ReflectionNamedType;
 use RuntimeException;
 use support\Container;
@@ -34,37 +35,41 @@ class ServiceInjector
         }
     }
 
-    public static function define($definition): callable
+    public static function define($definition, array $options = []): callable
     {
         if (is_callable($definition)) {
             return $definition;
         }
 
-        return static function ($container) use ($definition) {
+        return static function ($container) use ($definition, $options) {
             $ref = ReflectionManager::reflectClass($definition);
             if ($ref->hasMethod('__invoke')) {
                 $invokeMethod = $ref->getMethod('__invoke');
-                $args = self::resolveDependencies($invokeMethod->getParameters(), $container);
+                $args = self::resolveDependencies($invokeMethod->getParameters(), $container, $options);
 
                 return $invokeMethod->invokeArgs($ref->newInstance(), $args);
             }
 
             $constructor = $ref->getConstructor();
             if ($constructor && $constructor->isPublic()) {
-                return $ref->newInstanceArgs(self::resolveDependencies($constructor->getParameters(), $container));
+                return $ref->newInstanceArgs(self::resolveDependencies($constructor->getParameters(), $container, $options));
             }
 
             return $ref->newInstance();
         };
     }
 
-    protected static function resolveDependencies(array $parameters, $container): array
+    protected static function resolveDependencies(array $parameters, ContainerInterface $container, array $options): array
     {
         $args = [];
         foreach ($parameters as $param) {
-            $paramType = $param->getType();
             $paramName = $param->getName();
+            if (isset($options[$paramName])) {
+                $args[] = $options[$paramName];
+                continue;
+            }
 
+            $paramType = $param->getType();
             if (! ($paramType instanceof ReflectionNamedType) || $paramType->isBuiltin()) {
                 if ($param->isDefaultValueAvailable()) {
                     $args[] = $param->getDefaultValue();
