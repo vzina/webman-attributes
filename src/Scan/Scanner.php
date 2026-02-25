@@ -85,8 +85,6 @@ class Scanner
 
         $this->filesystem->put($cacheFile, serialize([$data, $classMap]));
         $scanner->finish();
-
-        return $proxies;
     }
 
     public function collect(ReflectionClass $reflection): void
@@ -133,7 +131,7 @@ class Scanner
             return [];
         }
 
-        [$data, $proxies] = unserialize(file_get_contents($cacheFile));
+        [$data, $proxies] = (array)unserialize((string)$this->filesystem->get($cacheFile)) + [[], []];
         foreach ($data as $collector => $deserialized) {
             /** @var MetadataCollector $collector */
             if (in_array($collector, $collectors)) {
@@ -151,7 +149,7 @@ class Scanner
 
         $data = [];
         if ($this->filesystem->exists($path)) {
-            $data = unserialize($this->filesystem->get($path));
+            $data = (array)unserialize($this->filesystem->get($path));
         }
 
         $this->filesystem->put($path, serialize($classes));

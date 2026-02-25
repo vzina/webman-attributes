@@ -197,15 +197,14 @@ namespace app\constants;
 
 use Vzina\Attributes\Attribute\Constants;
 use Vzina\Attributes\Attribute\ConstantsTrait;
+use Vzina\Attributes\Attribute\Message;
 
 #[Constants]
 class OrderStats
 {
     use ConstantsTrait
     
-    /**
-     * @Message("完成")
-     */
+    #[Message("完成")]
     const SUCCESS = 1;
 }
 
@@ -217,9 +216,7 @@ enum OrderStatsEnum
 {
     use ConstantsTrait
     
-    /**
-     * @Message("完成")
-     */
+    #[Message("完成")]
     case SUCCESS = 1;
 }
 
@@ -282,12 +279,13 @@ class Test
 
 ```
 
-### 9. 依赖服务（@Depend）
+### 9. 依赖注入（@Depend）
 
 ```php
 namespace app;
 
-use support\Container;use Vzina\Attributes\Attribute\Depend;
+use support\Container;
+use Vzina\Attributes\Attribute\Depend;
 
 interface TestInterface {}
 
