@@ -64,11 +64,6 @@ class AttributeReader
                 $code = $code instanceof BackedEnum ? $code->value : $code->name;
             }
 
-            $docComment = $classConstant->getDocComment();
-            if ($docComment && (is_int($code) || is_string($code))) {
-                $result[$code] = static::parse($docComment, $result[$code] ?? []);
-            }
-
             foreach ($classConstant->getAttributes() as $ref) {
                 $attribute = $ref->newInstance();
                 if ($attribute instanceof Message) {
@@ -90,20 +85,5 @@ class AttributeReader
         }
 
         return ReflectionManager::getPhpDocReader()->getPropertyClass($reflectionProperty);
-    }
-
-    protected static function parse(string $doc, array $previous): array
-    {
-        $pattern = '/@(\w+)\("(.+)"\)/U';
-        if (preg_match_all($pattern, $doc, $result)) {
-            [, $keys, $values] = $result;
-            foreach ($keys as $i => $key) {
-                if (isset($values[$i])) {
-                    $previous[Str::lower($key)] = $values[$i];
-                }
-            }
-        }
-
-        return $previous;
     }
 }

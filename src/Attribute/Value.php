@@ -17,7 +17,7 @@ use Attribute;
 #[Attribute(Attribute::TARGET_PROPERTY)]
 class Value extends AbstractAttribute
 {
-    public function __construct(public string $key, public $default = null)
+    public function __construct(public string $key)
     {
     }
 }

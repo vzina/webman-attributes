@@ -21,8 +21,8 @@ class ValuePropertyHandler implements PropertyHandlerInterface
     {
         $refProp = ReflectionManager::reflectProperty($currentClass, $property);
         $refProp->setValue($object, match (true) {
-            class_exists(Config::class) => Config::get((string)$attribute->key, $attribute->default),
-            function_exists('config') => \config((string)$attribute->key, $attribute->default),
+            class_exists(Config::class) => Config::get((string)$attribute->key, $refProp->getDefaultValue()),
+            function_exists('config') => \config((string)$attribute->key, $refProp->getDefaultValue()),
             default => null
         });
     }

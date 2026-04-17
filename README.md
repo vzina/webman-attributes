@@ -56,8 +56,8 @@ use Vzina\Attributes\Attribute\Value;
 class OrderService
 {
     // 读取配置 app.name，默认值为 "webman"
-    #[Value(key: 'app.name', default: 'webman')]
-    private string $appName;
+    #[Value(key: 'app.name')]
+    private string $appName = 'webman';
 
     public function getAppName()
     {
