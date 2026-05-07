@@ -19,7 +19,7 @@ use Vzina\Attributes\Attribute\AbstractAttribute;
 class Controller extends AbstractAttribute
 {
     public function __construct(
-        public string $prefix = '',
+        public ?string $prefix = null,
         public array|string $options = [],
     ) {
     }

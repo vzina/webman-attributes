@@ -19,7 +19,7 @@ use Vzina\Attributes\Attribute\AbstractAttribute;
 class Resource extends AbstractAttribute
 {
     public function __construct(
-        public string $prefix = '',
+        public ?string $prefix = null,
         public array|string $options = [],
     ) {
     }

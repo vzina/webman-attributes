@@ -102,8 +102,12 @@ class DispatcherFactory
         Route::resource($prefix, $className, $methods);
     }
 
-    protected static function getPrefix(string $className, string $prefix = ''): string
+    protected static function getPrefix(string $className, ?string $prefix = null): string
     {
+        if ($prefix === null) {
+            return '';
+        }
+
         if (! $prefix) {
             $handledNamespace = str_replace('\\', '/', Str::replaceFirst(
                 'Controller', '', Str::after($className, '\Controller\\')
