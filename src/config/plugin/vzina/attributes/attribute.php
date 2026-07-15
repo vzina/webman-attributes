@@ -12,4 +12,6 @@ return [
     'excludes' => ['config', 'Install.php', 'function.php', 'functions.php'],
     'class_map' => [],
     'ignores' => [],
+    'collectors' => [],
+    'aspects' => [],
 ];
