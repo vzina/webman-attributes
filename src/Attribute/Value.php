@@ -1,12 +1,10 @@
 <?php
 /**
- * Value.php
- * PHP version 7
+ * Value — 配置注入注解。
  *
- * @package attributes
- * @author  weijian.ye
- * @contact 891718689@qq.com
- * @link    https://github.com/vzina
+ * 将 webman 配置中的值注入到属性上，属性默认值作为 fallback。
+ *
+ * @param string $key 配置键名，如 'app.name'、'cache.ttl'
  */
 declare (strict_types=1);
 

@@ -1,7 +1,7 @@
 <?php
 /**
  * AspectInterface.php
- * PHP version 7
+ * @version 8.1
  *
  * @package attributes
  * @author  weijian.ye
@@ -21,5 +21,5 @@ use Vzina\Attributes\Ast\ProceedingJoinPoint;
  */
 interface AspectInterface
 {
-    public function process(ProceedingJoinPoint $proceedingJoinPoint);
+    public function process(ProceedingJoinPoint $point);
 }

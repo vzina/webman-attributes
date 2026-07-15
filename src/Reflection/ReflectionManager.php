@@ -1,7 +1,7 @@
 <?php
 /**
  * ReflectionManager.php
- * PHP version 7
+ * @version 8.1
  *
  * @package attributes
  * @author  weijian.ye
@@ -45,5 +45,19 @@ class ReflectionManager extends MetadataCollector
     public static function getPhpDocReader(): PhpDocReader
     {
         return static::$container['php_doc'] ??= new PHPDocReader();
+    }
+
+    /**
+     * Clear reflection caches to free memory.
+     * Call after scan phase completes — retains only the PhpDocReader
+     * which may be needed at runtime for property type resolution.
+     */
+    public static function clearReflectionCache(): void
+    {
+        $phpDoc = static::$container['php_doc'] ?? null;
+        static::$container = [];
+        if ($phpDoc !== null) {
+            static::$container['php_doc'] = $phpDoc;
+        }
     }
 }

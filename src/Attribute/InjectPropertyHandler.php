@@ -1,7 +1,7 @@
 <?php
 /**
  * InjectPropertyHandler.php
- * PHP version 7
+ * @version 8.1
  *
  * @package attributes
  * @author  weijian.ye
@@ -22,12 +22,27 @@ class InjectPropertyHandler implements PropertyHandlerInterface
     {
         $refProp = ReflectionManager::reflectProperty($currentClass, $property);
 
-        // 处理懒加载代理类名
-        if ($instance = Container::get($attribute->targetValue)) {
-            $refProp->setValue($object, $instance);
-        } elseif ($attribute->required) {
-            throw new RuntimeException("No entry or class found for '{$attribute->value}'");
+        $targetValue = $attribute->targetValue;
+        $instance = Container::get($targetValue);
+
+        // webman Container 不会对未注册类做 auto-make，这里手动兜底
+        if ($instance === null && class_exists($targetValue)) {
+            $instance = new $targetValue();
         }
+
+        if ($instance !== null) {
+            $refProp->setValue($object, $instance);
+            return;
+        }
+
+        throw new RuntimeException(sprintf(
+            "No entry or class found for '%s' (target: '%s', class_exists: %s) in %s::%s",
+            $attribute->value,
+            $targetValue,
+            var_export(class_exists($targetValue), true),
+            $currentClass,
+            $property
+        ));
     }
 
     public function getAttribute(): string

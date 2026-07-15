@@ -1,7 +1,7 @@
 <?php
 /**
  * ProxyLoaderInterface.php
- * PHP version 7
+ * @version 8.1
  *
  * @package webman-demo
  * @author  weijian.ye

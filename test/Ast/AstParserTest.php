@@ -161,12 +161,13 @@ PHP
         // 3. 扫描指定路径的类
         $classMap = $this->astParser->getAllClassesByPath($this->fixtureDir);
 
-        // 4. 断言结果包含2个类
+        // 4. 断言结果包含2个类（返回 format: className => filePath）
         $this->assertCount(2, $classMap);
-        // 断言键是完整类名，值是反射类实例
+        // 断言键是完整类名，值是文件路径字符串
         $this->assertArrayHasKey('Vzina\Tests\Fixtures\TestClass1', $classMap);
         $this->assertArrayHasKey('Vzina\Tests\Fixtures\TestClass2', $classMap);
-        $this->assertInstanceOf(ReflectionClass::class, $classMap['Vzina\Tests\Fixtures\TestClass1']);
+        $this->assertIsString($classMap['Vzina\Tests\Fixtures\TestClass1']);
+        $this->assertStringEndsWith('.php', $classMap['Vzina\Tests\Fixtures\TestClass1']);
     }
 
     /**

@@ -1,12 +1,12 @@
 <?php
 /**
- * CacheableAspect.php
- * PHP version 7
+ * CacheableAspect — 方法级缓存切面。
  *
- * @package attributes
- * @author  weijian.ye
- * @contact 891718689@qq.com
- * @link    https://github.com/vzina
+ * 拦截 @Cacheable 方法：命中缓存直接返回，未命中执行方法并缓存结果。
+ * 支持 Redis 驱动的防击穿锁 + 协程异步刷新过期缓存。
+ *
+ * 缓存 key 格式: {prefix}#{paramKey}.{subKey}
+ * 缓存值结构: ['expired_time' => timestamp, 'data' => mixed]
  */
 declare (strict_types=1);
 
@@ -22,109 +22,98 @@ use Workerman\Coroutine;
 
 class CacheableAspect implements AspectInterface
 {
-    public array $attributes = [
-        Cacheable::class,
-    ];
+    public array $attributes = [Cacheable::class];
 
-    public function process(ProceedingJoinPoint $proceedingJoinPoint)
+    public function process(ProceedingJoinPoint $point)
     {
-        /** @var Cacheable|null $attribute */
-        $attribute = $proceedingJoinPoint->getAnnotationMetadata()->method[Cacheable::class] ?? null;
-        if ($attribute === null) {
-            return $proceedingJoinPoint->process();
+        /** @var Cacheable|null $attr */
+        $attr = $point->getAnnotationMetadata()->method[Cacheable::class] ?? null;
+        if (! $attr) {
+            return $point->process();
         }
 
-        $arguments = $proceedingJoinPoint->arguments['keys'];
-        $prefix = Config::get('cache.prefix', '') . $attribute->prefix;
-        $cacheKey = $this->getFormattedKey($prefix, $arguments, $attribute->value);
-        $group = $attribute->group ?? Config::get('cache.default');
-        $config = Config::get("cache.stores.{$group}", []);
+        $arguments = $point->arguments['keys'];
+        $prefix    = Config::get('cache.prefix', '') . $attr->prefix;
+        $cacheKey  = $this->buildKey($prefix, $arguments, $attr->value);
+        $group     = $attr->group ?? Config::get('cache.default');
+        $storeCfg  = Config::get("cache.stores.{$group}", []);
 
-        $redis = null;
-        if (isset($config['driver']) && $config['driver'] === 'redis') {
-            $redis = Redis::connection($config['connection'] ?? 'default');
-        }
+        $redis = (($storeCfg['driver'] ?? '') === 'redis')
+            ? Redis::connection($storeCfg['connection'] ?? 'default') : null;
 
-        $collectKey = $attribute->collect ? $prefix . 'MEMBERS' : null;
-        $cache = Cache::store($group);
+        $collectKey = $attr->collect ? $prefix . 'MEMBERS' : null;
+        $cache      = Cache::store($group);
 
-        if ($attribute->evict) { // 缓存清除
+        // 缓存清除模式
+        if ($attr->evict) {
             if ($collectKey && $redis) {
-                $cache->deleteMultiple((array)$redis->sMembers($collectKey));
+                $cache->deleteMultiple((array) $redis->sMembers($collectKey));
                 $redis->del($collectKey);
             } else {
                 $cache->delete($cacheKey);
             }
-
-            return $proceedingJoinPoint->process();
+            return $point->process();
         }
 
         $now = time();
-        $ttl = ($attribute->ttl ?? Config::get("cache.ttl", 3600)) + $this->getRandomOffset($attribute->offset);
+        $ttl = ($attr->ttl ?? Config::get("cache.ttl", 3600))
+             + ($attr->offset > 0 ? random_int(0, $attr->offset) : 0);
 
-        $callback = static function () use (
-            $proceedingJoinPoint, $cache, $attribute, $cacheKey, $now, $ttl, $collectKey, $redis
-        ) {
-            $result = $proceedingJoinPoint->process();
+        // 缓存刷新回调
+        $refresh = static function () use ($point, $cache, $attr, $cacheKey, $now, $ttl, $collectKey, $redis) {
+            $result = $point->process();
             $cache->set($cacheKey, [
-                'expired_time' => $now + $ttl - $attribute->aheadSeconds,
-                'data' => $result,
+                'expired_time' => $now + $ttl - $attr->aheadSeconds,
+                'data'         => $result,
             ], $ttl);
-
-            if ($collectKey && $redis) {
-                $redis->sAdd($collectKey, $cacheKey);
-            }
-
+            if ($collectKey && $redis) { $redis->sAdd($collectKey, $cacheKey); }
             return $result;
         };
 
-        if (! $attribute->put) {
-            $result = $cache->get($cacheKey);
-            if ($result !== false && isset($result['expired_time'], $result['data'])) {
-                if ($now > $result['expired_time'] &&
-                    // 仅支持redis驱动加锁更新
-                    ($redis === null || $redis->set($cacheKey . '.lock', '1', ['NX', 'EX' => $attribute->lockSeconds]))
+        // 非强制写入模式 → 先查缓存
+        if (! $attr->put) {
+            $cached = $cache->get($cacheKey);
+            if ($cached !== false && isset($cached['expired_time'], $cached['data'])) {
+                // 过期但获取到锁 → 协程异步刷新
+                if ($now > $cached['expired_time'] &&
+                    (! $redis || $redis->set($cacheKey . '.lock', '1', ['NX', 'EX' => $attr->lockSeconds]))
                 ) {
-                    Coroutine::create($callback());
+                    Coroutine::create($refresh);
                 }
-
-                return $result['data'];
+                return $cached['data'];
             }
         }
 
-        return $callback();
+        return $refresh();
     }
 
-    protected function getFormattedKey(string $prefix, array $arguments, ?string $value = null): string
+    /** 根据参数模板构建缓存 key */
+    private function buildKey(string $prefix, array $arguments, ?string $template): string
     {
-        if ($value !== null) {
-            if (preg_match_all('/#\{[\w.]+}/', $value, $matches)) {
-                foreach ($matches[0] as $search) {
-                    [$key, $subKey] = explode('.', str_replace(['#{', '}'], '', $search)) + [null, null];
-                    $val = Arr::get($arguments, $key);
-                    if ($subKey) {
-                        if (is_array($val)) {
-                            $val = (string)Arr::get($val, $subKey);
-                        } elseif (is_object($val)) {
-                            if (property_exists($val, $subKey)) {
-                                $val = (string)$val->$subKey;
-                            } elseif (! method_exists($val, '__toString')) {
-                                $val = spl_object_hash($val);
-                            }
-                        }
-                    }
-                    $value = Str::replaceFirst($search, (string)$val, $value);
-                }
-            }
-        } else {
-            $value = md5(serialize($arguments));
+        if ($template === null) {
+            return $prefix . md5(serialize($arguments));
         }
 
-        return $prefix . $value;
-    }
+        if (! preg_match_all('/#\{[\w.]+}/', $template, $matches)) {
+            return $prefix . $template;
+        }
 
-    protected function getRandomOffset(int $offset): int
-    {
-        return $offset > 0 ? random_int(0, $offset) : 0;
+        foreach ($matches[0] as $placeholder) {
+            [$key, $sub] = explode('.', str_replace(['#{', '}'], '', $placeholder)) + [null, null];
+            $val = Arr::get($arguments, $key);
+
+            if ($sub) {
+                $val = match (true) {
+                    is_array($val)  => (string) Arr::get($val, $sub),
+                    is_object($val) => property_exists($val, $sub) ? (string) $val->$sub
+                                     : (method_exists($val, '__toString') ? (string) $val : spl_object_hash($val)),
+                    default         => (string) $val,
+                };
+            }
+
+            $template = Str::replaceFirst($placeholder, (string) $val, $template);
+        }
+
+        return $prefix . $template;
     }
 }

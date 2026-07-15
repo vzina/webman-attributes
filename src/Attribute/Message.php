@@ -1,12 +1,11 @@
 <?php
 /**
- * Message.php
- * PHP version 7
+ * Message — 常量说明注解。
  *
- * @package webman-demo
- * @author  weijian.ye
- * @contact 891718689@qq.com
- * @link    https://github.com/vzina
+ * 配合 @Constants 使用，为枚举/类常量提供文本说明。
+ *
+ * @param string $value 说明文本
+ * @param string $key   说明类型，默认 'message'
  */
 declare (strict_types=1);
 

@@ -1,12 +1,12 @@
 <?php
 /**
- * Crontab.php
- * PHP version 7
+ * Crontab — 定时任务注解。
  *
- * @package attributes
- * @author  weijian.ye
- * @contact 891718689@qq.com
- * @link    https://github.com/vzina
+ * 标记类或方法为定时任务，通过 workerman/crontab 按 cron 表达式调度执行。
+ * 类级别使用时自动监听 'handle' 方法。
+ *
+ * @param string  $rule cron 表达式，如 '* * * * *'
+ * @param ?string $name 任务名称
  */
 declare (strict_types=1);
 

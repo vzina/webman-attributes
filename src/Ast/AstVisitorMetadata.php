@@ -1,7 +1,7 @@
 <?php
 /**
  * AstVisitorMetadata.php
- * PHP version 7
+ * @version 8.1
  *
  * @package attributes
  * @author  weijian.ye

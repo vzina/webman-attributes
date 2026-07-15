@@ -1,7 +1,7 @@
 <?php
 /**
  * LazyProxyTrait.php
- * PHP version 7
+ * @version 8.1
  *
  * @package attributes
  * @author  weijian.ye
@@ -16,12 +16,14 @@ use support\Container;
 
 trait LazyProxyTrait
 {
+    /**
+     * Cached resolved instance to avoid repeated Container::get() calls.
+     */
+    private ?object $__instance = null;
+
     public function __construct()
     {
-        $vars = get_object_vars($this);
-        foreach (array_keys($vars) as $var) {
-            unset($this->{$var});
-        }
+        // Lazy proxy — no initialization needed; instance resolved on first access.
     }
 
     public function __call($method, $arguments)
@@ -52,18 +54,16 @@ trait LazyProxyTrait
 
     public function __wakeup()
     {
-        $vars = get_object_vars($this);
-        foreach (array_keys($vars) as $var) {
-            unset($this->{$var});
-        }
+        $this->__instance = null;
     }
 
     /**
      * Return The Proxy Target.
+     * Instance is cached after first resolution.
      * @return mixed
      */
     public function getInstance()
     {
-        return Container::get(self::PROXY_TARGET);
+        return $this->__instance ??= Container::get(self::PROXY_TARGET);
     }
 }

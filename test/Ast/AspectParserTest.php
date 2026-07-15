@@ -84,6 +84,16 @@ class AspectParserTest extends TestCase
         $this->assertTrue($collection->shouldRewrite('testMethod')); // 精确匹配
         $this->assertTrue($collection->shouldRewrite('getUser'));   // 通配符匹配
         $this->assertFalse($collection->shouldRewrite('otherMethod')); // 不匹配
+
+        // 6. 测试 isEmpty 方法（新增）
+        $emptyCollection = new RewriteCollection('App\\Test\\Empty');
+        $this->assertTrue($emptyCollection->isEmpty());
+
+        $emptyCollection->add('someMethod');
+        $this->assertFalse($emptyCollection->isEmpty());
+
+        $emptyCollection->setLevel(RewriteCollection::CLASS_LEVEL);
+        $this->assertFalse($emptyCollection->isEmpty());
     }
 
     // -------------------------- AspectParser 核心方法测试 --------------------------

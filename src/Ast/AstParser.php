@@ -1,7 +1,7 @@
 <?php
 /**
  * AstParser.php
- * PHP version 7
+ * @version 8.1
  *
  * @package attributes
  * @author  weijian.ye
@@ -198,22 +198,25 @@ class AstParser
     }
 
     /**
-     * 从Finder实例扫描所有PHP类并返回反射类映射
+     * 从Finder实例扫描所有PHP类并返回类名到文件路径的映射。
+     * 不触发类自动加载，避免扫描阶段加载原始类后代理文件无法替换。
+     *
+     * @return array<string, string> className => filePath
      */
     public function getAllClassesByFinder(Finder $finder): array
     {
-        $classReflections = [];
+        $classMap = [];
 
         foreach ($finder as $file) {
             $stmts = $this->parse($file->getContents());
             $className = $this->parseClassByStmts($stmts);
 
             if ($className) {
-                $classReflections[$className] = ReflectionManager::reflectClass($className);
+                $classMap[$className] = $file->getRealPath();
             }
         }
 
-        return $classReflections;
+        return $classMap;
     }
 
     /**

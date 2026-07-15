@@ -1,12 +1,12 @@
 <?php
 /**
- * Listener.php
- * PHP version 7
+ * Listener — 事件监听注解。
  *
- * @package attributes
- * @author  weijian.ye
- * @contact 891718689@qq.com
- * @link    https://github.com/vzina
+ * 标记类或方法为 webman Event 的事件监听器。
+ * 类级别使用时自动监听 'handle' 方法。
+ *
+ * @param string|array|null $event   事件名，支持多个
+ * @param int|null          $priority 监听优先级
  */
 declare (strict_types=1);
 

@@ -42,7 +42,20 @@ class LazyLoader implements ProxyLoaderInterface
 
     public function lazyProxy(AstParser $astParser, string $proxy, string $target): string
     {
-        $ref = new ReflectionClass($target);
+        try {
+            $ref = new ReflectionClass($target);
+        } catch (\ReflectionException $e) {
+            throw new \RuntimeException(sprintf(
+                "LazyLoader: Cannot reflect class '%s' (target value: '%s'). "
+                . "The @Inject property type may not be fully qualified. "
+                . "Try using the FQCN or ensure the use statement is correct. "
+                . "Error: %s",
+                $target,
+                $target,
+                $e->getMessage()
+            ), 0, $e);
+        }
+
         if ($ref->isFinal()) {
             $builder = new FallbackLazyProxyBuilder();
             return $this->buildNewCode($astParser, $builder, $proxy, $ref);

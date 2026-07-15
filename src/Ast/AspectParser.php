@@ -1,12 +1,9 @@
 <?php
 /**
- * AspectParser.php
- * PHP version 7
+ * AspectParser — 切面规则匹配器。
  *
- * @package attributes
- * @author  weijian.ye
- * @contact 891718689@qq.com
- * @link    https://github.com/vzina
+ * 判断一个「类::方法」是否匹配 Aspect 定义的 class/attribute 通配符规则。
+ * 支持 * 通配符，精确匹配和模式匹配。
  */
 declare (strict_types=1);
 
@@ -17,19 +14,18 @@ use Vzina\Attributes\Collector\AttributeCollector;
 
 class AspectParser
 {
+    /**
+     * 检查 class::method 是否匹配规则。
+     *
+     * 规则示例: Foo/Bar, Foo/B*, Foo/Bar::method, Foo/Bar::met*
+     * @return array{0: bool, 1: ?string} [是否匹配, 匹配到的方法名(如有)]
+     */
     public static function isMatchClassRule(string $target, string $rule): array
     {
-        /*
-         * e.g. Foo/Bar
-         * e.g. Foo/B*
-         * e.g. F*o/Bar
-         * e.g. Foo/Bar::method
-         * e.g. Foo/Bar::met*
-         */
+        $ruleClass  = $rule;
         $ruleMethod = null;
-        $ruleClass = $rule;
-        $method = null;
-        $class = $target;
+        $class      = $target;
+        $method     = null;
 
         if (str_contains($rule, '::')) {
             [$ruleClass, $ruleMethod] = explode('::', $rule);
@@ -38,126 +34,71 @@ class AspectParser
             [$class, $method] = explode('::', $target);
         }
 
-        if ($method === null) {
-            if (! str_contains($ruleClass, '*')) {
-                /*
-                 * Match [rule] Foo/Bar::ruleMethod [target] Foo/Bar [return] true,ruleMethod
-                 * Match [rule] Foo/Bar [target] Foo/Bar [return] true,null
-                 * Match [rule] FooBar::rule*Method [target] Foo/Bar [return] true,rule*Method
-                 */
-                if ($ruleClass === $class) {
-                    return [true, $ruleMethod];
-                }
-
-                return [false, null];
-            }
-
-            /**
-             * Match [rule] Foo*Bar::ruleMethod [target] Foo/Bar [return] true,ruleMethod
-             * Match [rule] Foo*Bar [target] Foo/Bar [return] true,null.
-             */
-            $preg = str_replace(['*', '\\'], ['.*', '\\\\'], $ruleClass);
-            $pattern = "#^{$preg}$#";
-
-            if (preg_match($pattern, $class)) {
-                return [true, $ruleMethod];
-            }
-
-            return [false, null];
-        }
-
+        // 无通配符 → 精确匹配
         if (! str_contains($rule, '*')) {
-            /*
-             * Match [rule] Foo/Bar::ruleMethod [target] Foo/Bar::ruleMethod [return] true,ruleMethod
-             * Match [rule] Foo/Bar [target] Foo/Bar::ruleMethod [return] false,null
-             */
-            if ($ruleClass === $class && ($ruleMethod === null || $ruleMethod === $method)) {
-                return [true, $method];
-            }
-
-            return [false, null];
+            $classOk  = $ruleClass === $class;
+            $methodOk = $ruleMethod === null || $ruleMethod === $method || $method === null;
+            $matched  = $classOk && $methodOk;
+            return [$matched, $matched ? ($method ?? $ruleMethod) : null];
         }
 
-        /*
-         * Match [rule] Foo*Bar::ruleMethod [target] Foo/Bar::ruleMethod [return] true,ruleMethod
-         * Match [rule] FooBar::rule*Method [target] Foo/Bar::ruleMethod [return] true,rule*Method
-         */
-        $preg = str_replace(['*', '\\'], ['.*', '\\\\'], $rule);
-        $pattern = "#^{$preg}$#";
+        // 通配符匹配
+        $pattern = '/^' . str_replace('\*', '.*', preg_quote($rule, '/')) . '$/';
         if ($ruleMethod) {
-            if (preg_match($pattern, $target)) {
-                return [true, $method];
-            }
-            return [false, null];
+            return [preg_match($pattern, $target) === 1, $method];
         }
-
-        /**
-         * Match [rule] Foo*Bar [target] Foo/Bar::ruleMethod [return] true,null.
-         */
-        return preg_match($pattern, $class) ? [true, $method] : [false, null];
+        return [preg_match($pattern, $class) === 1, $method];
     }
 
+    /** 简化接口：类+方法匹配规则 */
     public static function isMatch(string $class, string $method, string $rule): bool
     {
-        [$isMatch,] = self::isMatchClassRule($class . '::' . $method, $rule);
-
-        return $isMatch;
+        return self::isMatchClassRule($class . '::' . $method, $rule)[0];
     }
 
+    /** 解析一个类的所有匹配切面规则，返回需要重写的方法集合 */
     public static function parse(string $class): RewriteCollection
     {
-        $rewriteCollection = new RewriteCollection($class);
-        $container = AspectCollector::getContainer();
-        foreach ($container as $type => $collection) {
+        $collection = new RewriteCollection($class);
+        $container  = AspectCollector::getContainer();
+
+        foreach ($container as $type => $items) {
             match ($type) {
-                'classes' => static::parseClasses($collection, $class, $rewriteCollection),
-                'attributes' => static::parseAttributes($collection, $class, $rewriteCollection),
-                default => null,
+                'classes'    => self::parseClasses($items, $class, $collection),
+                'attributes' => self::parseAttributes($items, $class, $collection),
+                default      => null,
             };
         }
-        return $rewriteCollection;
+        return $collection;
     }
 
-    private static function parseAttributes(array $collection, string $class, RewriteCollection $rewriteCollection): void
+    /** 类规则解析 */
+    private static function parseClasses(array $collection, string $class, RewriteCollection $rw): void
     {
-        // Get the attributes of class and method.
-        $attributes = AttributeCollector::get($class);
-        $classMapping = $attributes['_c'] ?? [];
-        $methodMapping = [];
-        foreach ($attributes['_m'] ?? [] as $method => $targetAttributes) {
-            foreach ($targetAttributes as $key => $_) {
-                $methodMapping[$key][] = $method;
-            }
-        }
-
         foreach ($collection as $aspect => $_) {
-            $rules = AspectCollector::getRule($aspect);
-            foreach ($rules['attributes'] ?? [] as $rule) {
-                // If exist class level attribute, then all methods should rewrite, so return an empty array directly.
-                if (isset($classMapping[$rule])) {
-                    $rewriteCollection->setLevel(RewriteCollection::CLASS_LEVEL);
-                    return;
-                }
-                if (isset($methodMapping[$rule])) {
-                    $rewriteCollection->add($methodMapping[$rule]);
-                }
+            foreach (AspectCollector::getRule($aspect)['classes'] ?? [] as $rule) {
+                [$ok, $method] = self::isMatchClassRule($class, $rule);
+                if (! $ok) continue;
+                if ($method === null) { $rw->setLevel(RewriteCollection::CLASS_LEVEL); return; }
+                $rw->add($method);
             }
         }
     }
 
-    private static function parseClasses(array $collection, string $class, RewriteCollection $rewriteCollection): void
+    /** 属性规则解析 */
+    private static function parseAttributes(array $collection, string $class, RewriteCollection $rw): void
     {
+        $attrs    = AttributeCollector::get($class);
+        $classMap = $attrs['_c'] ?? [];
+        $methodMap = [];
+        foreach ($attrs['_m'] ?? [] as $method => $list) {
+            foreach ($list as $attr => $_) { $methodMap[$attr][] = $method; }
+        }
+
         foreach ($collection as $aspect => $_) {
-            $rules = AspectCollector::getRule($aspect);
-            foreach ($rules['classes'] ?? [] as $rule) {
-                [$isMatch, $method] = static::isMatchClassRule($class, $rule);
-                if ($isMatch) {
-                    if ($method === null) {
-                        $rewriteCollection->setLevel(RewriteCollection::CLASS_LEVEL);
-                        return;
-                    }
-                    $rewriteCollection->add($method);
-                }
+            foreach (AspectCollector::getRule($aspect)['attributes'] ?? [] as $rule) {
+                if (isset($classMap[$rule])) { $rw->setLevel(RewriteCollection::CLASS_LEVEL); return; }
+                if (isset($methodMap[$rule])) { $rw->add($methodMap[$rule]); }
             }
         }
     }

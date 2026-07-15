@@ -1,7 +1,7 @@
 <?php
 /**
  * ConstantsCollector.php
- * PHP version 7
+ * @version 8.1
  *
  * @package attributes
  * @author  weijian.ye
@@ -13,7 +13,6 @@ declare (strict_types=1);
 namespace Vzina\Attributes\Collector;
 
 use BackedEnum;
-use PHPUnit\TextUI\XmlConfiguration\Constant;
 use Symfony\Component\Translation\Translator;
 use UnitEnum;
 use Webman\Config;

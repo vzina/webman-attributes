@@ -1,147 +1,95 @@
 <?php
 /**
- * ProxyTrait.php
- * PHP version 7
+ * ProxyTrait — AOP 切面代理核心 trait。
  *
- * 代理类核心切面处理Trait，负责方法调用的切面拦截、优先级排序和管道执行
- *
- * @package attributes
- * @author  weijian.ye
- * @contact 891718689@qq.com
- * @link    https://github.com/vzina
+ * 被代理的类通过 __proxyCall() 将所有方法调用路由到 aspect 管道。
+ * 首次调用时解析匹配的切面并缓存到 AspectManagerCollector。
+ * 管道使用 Laravel Pipeline 按优先级执行切面的 process() 方法。
  */
 declare (strict_types=1);
 
 namespace Vzina\Attributes\Ast;
 
 use Closure;
-use Illuminate\Pipeline\Pipeline;
-use InvalidArgumentException;
-use support\Container;
 use Vzina\Attributes\Collector\AspectCollector;
 use Vzina\Attributes\Collector\AspectManagerCollector;
 use Vzina\Attributes\Collector\AttributeCollector;
 
 trait ProxyTrait
 {
+    /** 管道单例，避免每请求创建匿名类 */
+    protected static ?ProxyPipeline $pipeline = null;
+
+    /** 代理入口：由 AstProxyCallVisitor 生成的方法体调用 */
     protected static function __proxyCall(
-        string $className,
-        string $method,
-        array $arguments,
-        Closure $closure
+        string $className, string $method, array $arguments, Closure $closure
     ) {
-        $proceedingJoinPoint = new ProceedingJoinPoint($closure, $className, $method, $arguments);
-        $result = self::handleAround($proceedingJoinPoint);
-        unset($proceedingJoinPoint);
+        $point = new ProceedingJoinPoint($closure, $className, $method, $arguments);
+        $result = self::handleAround($point);
+        unset($point);
         return $result;
     }
 
-    protected static function handleAround(ProceedingJoinPoint $proceedingJoinPoint)
+    /** 解析并执行切面管道 */
+    protected static function handleAround(ProceedingJoinPoint $point)
     {
-        $className = $proceedingJoinPoint->className;
-        $methodName = $proceedingJoinPoint->methodName;
+        $class  = $point->className;
+        $method = $point->methodName;
 
-        if (! AspectManagerCollector::has($className, $methodName)) {
-            $aspects = array_unique(array_merge(
-                static::getClassesAspects($className, $methodName),
-                static::getAttributeAspects($className, $methodName)
-            ));
+        // 首次调用 → 解析切面列表并缓存
+        if (! AspectManagerCollector::has($class, $method)) {
             $queue = new SplPriorityQueue();
-            foreach ($aspects as $aspect) {
+            foreach (self::resolveAspects($class, $method) as $aspect) {
                 $queue->insert($aspect, AspectCollector::getPriority($aspect));
             }
-
             while ($queue->valid()) {
-                AspectManagerCollector::insert($className, $methodName, $queue->current());
+                AspectManagerCollector::insert($class, $method, $queue->current());
                 $queue->next();
             }
-            unset($aspects, $queue);
         }
 
-        $aspectList = AspectManagerCollector::get($className, $methodName);
-        if (empty($aspectList)) {
-            return $proceedingJoinPoint->processOriginalMethod();
+        $aspects = AspectManagerCollector::get($class, $method);
+        if (empty($aspects)) {
+            return $point->processOriginalMethod();
         }
 
-        return static::createPipeline()
-            ->via('process')
-            ->through($aspectList)
-            ->send($proceedingJoinPoint)
+        return self::pipeline()
+            ->via('process')->through($aspects)->send($point)
             ->then(fn(ProceedingJoinPoint $p) => $p->processOriginalMethod());
     }
 
-    protected static function createPipeline(): Pipeline
+    private static function pipeline(): ProxyPipeline
     {
-        return new class extends Pipeline {
-            protected function carry(): Closure
-            {
-                return function ($stack, $pipe) {
-                    return function ($passable) use ($stack, $pipe) {
-                        if (! ($passable instanceof ProceedingJoinPoint)) {
-                            throw new InvalidArgumentException('$passable must be a ProceedingJoinPoint object.');
-                        }
-
-                        if (is_string($pipe) && class_exists($pipe)) {
-                            $pipe = Container::get($pipe);
-                        }
-                        $passable->pipe = $stack;
-
-                        return method_exists($pipe, $this->method)
-                            ? $pipe->{$this->method}($passable)
-                            : $pipe($passable);
-                    };
-                };
-            }
-        };
+        return self::$pipeline ??= new ProxyPipeline();
     }
 
-    protected static function getClassesAspects(string $className, string $method): array
+    /** 解析类+方法匹配的全部切面（class 规则 + attribute 规则） */
+    private static function resolveAspects(string $class, string $method): array
     {
-        $matchedAspects = [];
-        $classAspects = AspectCollector::get('classes', []);
-        foreach ($classAspects as $aspect => $rules) {
+        $matched = [];
+
+        // class 规则
+        foreach (AspectCollector::get('classes', []) as $aspect => $rules) {
             foreach ($rules as $rule) {
-                if (AspectParser::isMatch($className, $method, $rule)) {
-                    $matchedAspects[] = $aspect;
-                    break;
-                }
+                if (AspectParser::isMatch($class, $method, $rule)) { $matched[] = $aspect; break; }
             }
         }
 
-        return $matchedAspects;
-    }
-
-    protected static function getAttributeAspects(string $className, string $method): array
-    {
-        $allAttributes = array_merge(
-            AttributeCollector::get($className . '._c', []),
-            AttributeCollector::get($className . '._m.' . $method, [])
-        );
-
-        if (empty($allAttributes)) {
-            return [];
-        }
-
-        $matchedAspects = [];
-        $attrAspects = AspectCollector::get('attributes', []);
-        $attributeNames = array_keys($allAttributes);
-
-        foreach ($attrAspects as $aspect => $rules) {
-            foreach ($rules as $rule) {
-                foreach ($attributeNames as $attribute) {
-                    if (str_contains($rule, '*')) {
-                        $pattern = "/^" . str_replace(['*', '\\'], ['.*', '\\\\'], $rule) . "$/";
-                        if (! preg_match($pattern, $attribute)) {
-                            continue;
-                        }
-                    } elseif ($rule !== $attribute) {
-                        continue;
+        // attribute 规则
+        $attrs = array_keys(array_merge(
+            AttributeCollector::get($class . '._c', []),
+            AttributeCollector::get($class . '._m.' . $method, [])
+        ));
+        if ($attrs) {
+            foreach (AspectCollector::get('attributes', []) as $aspect => $rules) {
+                foreach ($rules as $rule) {
+                    foreach ($attrs as $attr) {
+                        if (AspectCollector::matchRule($rule, $attr)) { $matched[] = $aspect; continue 2; }
                     }
-                    $matchedAspects[] = $aspect;
                 }
             }
         }
 
-        return $matchedAspects;
+        return array_unique($matched);
     }
 }

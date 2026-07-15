@@ -1,7 +1,7 @@
 <?php
 /**
  * ValueAspect.php
- * PHP version 7
+ * @version 8.1
  *
  * @package attributes
  * @author  weijian.ye
@@ -20,8 +20,8 @@ class ValueAspect implements AspectInterface
         Value::class,
     ];
 
-    public function process(ProceedingJoinPoint $proceedingJoinPoint)
+    public function process(ProceedingJoinPoint $point)
     {
-        return $proceedingJoinPoint->process();
+        return $point->process();
     }
 }

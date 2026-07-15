@@ -1,7 +1,7 @@
 <?php
 /**
  * AstVisitorManager.php
- * PHP version 7
+ * @version 8.1
  *
  * @package attributes
  * @author  weijian.ye
@@ -18,6 +18,11 @@ class AstVisitorManager
 
     protected static array $values = [];
 
+    /**
+     * Cached visitor list to avoid cloning SplPriorityQueue on every proxy generation.
+     */
+    protected static ?array $cachedVisitors = null;
+
     public static function __callStatic($name, $arguments)
     {
         return static::getQueue()->{$name}(...$arguments);
@@ -27,6 +32,7 @@ class AstVisitorManager
     {
         static::$values[] = $value;
         static::getQueue()->insert($value, $priority);
+        static::$cachedVisitors = null; // Invalidate cache on insert
     }
 
     public static function exists($value): bool
@@ -37,5 +43,23 @@ class AstVisitorManager
     public static function getQueue(): SplPriorityQueue
     {
         return static::$queue ??= new SplPriorityQueue();
+    }
+
+    /**
+     * Get visitors as a plain array in priority order, avoiding SplPriorityQueue clone overhead.
+     * Results are cached until the next insert() call.
+     */
+    public static function getVisitors(): array
+    {
+        if (static::$cachedVisitors !== null) {
+            return static::$cachedVisitors;
+        }
+
+        $queue = clone (static::$queue ?? new SplPriorityQueue());
+        $visitors = [];
+        foreach ($queue as $item) {
+            $visitors[] = $item;
+        }
+        return static::$cachedVisitors = $visitors;
     }
 }

@@ -1,7 +1,7 @@
 <?php
 /**
  * Aspect.php
- * PHP version 7
+ * @version 8.1
  *
  * @package attributes
  * @author  weijian.ye
@@ -13,7 +13,7 @@ declare (strict_types=1);
 namespace Vzina\Attributes\Attribute;
 
 use Attribute;
-use Vzina\Attributes\Ast\AspectLoader;
+use Vzina\Attributes\Collector\AspectCollector;
 
 #[Attribute(Attribute::TARGET_CLASS)]
 class Aspect extends AbstractAttribute
@@ -28,6 +28,14 @@ class Aspect extends AbstractAttribute
     public function collectClass(string $className): void
     {
         parent::collectClass($className);
-        AspectLoader::collect($className, get_object_vars($this));
+
+        // 读取切面类（$className）的默认属性值，而非 #[Aspect] 属性实例的构造函数参数
+        $props = (new \ReflectionClass($className))->getDefaultProperties();
+        AspectCollector::setAround(
+            $className,
+            $props['classes'] ?? [],
+            $props['attributes'] ?? [],
+            $props['priority'] ?? null,
+        );
     }
 }

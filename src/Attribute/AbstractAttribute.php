@@ -1,7 +1,7 @@
 <?php
 /**
  * AbstractAttribute.php
- * PHP version 7
+ * @version 8.1
  *
  * @package attributes
  * @author  weijian.ye
@@ -39,5 +39,31 @@ abstract class AbstractAttribute implements AttributeInterface
     public function toArray(): array
     {
         return get_object_vars($this);
+    }
+
+    /**
+     * Magic method for var_export() object reconstruction.
+     * Called when exporting attribute objects to PHP cache files.
+     * Uses reflection to bypass constructor and set all properties directly,
+     * supporting readonly promoted properties across all subclasses.
+     *
+     * @param array<string, mixed> $state Property name => value pairs from var_export
+     * @return static Fully reconstructed attribute instance
+     */
+    public static function __set_state(array $state): static
+    {
+        $ref = new \ReflectionClass(static::class);
+        $instance = $ref->newInstanceWithoutConstructor();
+
+        foreach ($state as $key => $value) {
+            if ($ref->hasProperty($key)) {
+                $prop = $ref->getProperty($key);
+                if (! $prop->isStatic()) {
+                    $prop->setValue($instance, $value);
+                }
+            }
+        }
+
+        return $instance;
     }
 }

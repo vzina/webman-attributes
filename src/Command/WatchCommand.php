@@ -1,7 +1,7 @@
 <?php
 /**
  * WatchCommand.php
- * PHP version 7
+ * @version 8.1
  *
  * @package webman-demo
  * @author  weijian.ye
@@ -89,8 +89,7 @@ class WatchCommand extends Command
 
     public function onWorkerStart(): void
     {
-        exec('composer dump-autoload -o --no-scripts -d ' . base_path() . ' 2>/dev/null');
-
+        exec('composer dump-autoload -o --no-scripts -d ' . escapeshellarg(base_path()) . ' 2>/dev/null');
         exec($this->getCmd(['start', '-d']));
 
         Timer::add(1, function () {
@@ -149,8 +148,9 @@ class WatchCommand extends Command
                     echo "$file updated but cannot be reloaded because only auto-loaded files support reload.\n";
                     continue;
                 }
+                // 语法检查
                 $var = 0;
-                exec('"' . PHP_BINARY . '" -l ' . $file, $out, $var);
+                exec(escapeshellarg(PHP_BINARY) . ' -l ' . escapeshellarg($file->getRealPath()), $out, $var);
                 if ($var) {
                     continue;
                 }

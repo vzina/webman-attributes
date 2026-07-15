@@ -1,7 +1,7 @@
 <?php
 /**
  * ProceedingJoinPoint.php
- * PHP version 7
+ * @version 8.1
  *
  * @package attributes
  * @author  weijian.ye
@@ -21,9 +21,7 @@ use Vzina\Attributes\Reflection\ReflectionManager;
 
 class ProceedingJoinPoint
 {
-    public mixed $result;
-
-    public ?Closure $pipe;
+    public ?Closure $pipe = null;
 
     public function __construct(
         public Closure $originalMethod,

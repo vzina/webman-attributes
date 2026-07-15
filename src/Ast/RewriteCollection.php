@@ -1,7 +1,7 @@
 <?php
 /**
  * RewriteCollection.php
- * PHP version 7
+ * @version 8.1
  *
  * @package attributes
  * @author  weijian.ye
@@ -108,5 +108,15 @@ class RewriteCollection
     public function getShouldNotRewriteMethods(): array
     {
         return $this->shouldNotRewriteMethods;
+    }
+
+    /**
+     * Whether this collection is empty (no methods to rewrite at any level).
+     */
+    public function isEmpty(): bool
+    {
+        return $this->level === self::METHOD_LEVEL
+            && empty($this->methods)
+            && empty($this->pattern);
     }
 }

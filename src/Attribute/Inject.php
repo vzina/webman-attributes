@@ -1,12 +1,13 @@
 <?php
 /**
- * Inject.php
- * PHP version 7
+ * Inject — 依赖注入注解。
  *
- * @package attributes
- * @author  weijian.ye
- * @contact 891718689@qq.com
- * @link    https://github.com/vzina
+ * 在属性上标记需要从容器中注入的服务，支持懒加载代理模式。
+ * 属性类型自动解析为服务类名，也可通过 $value 显式指定。
+ *
+ * @param ?string $value   服务类名，默认从属性类型自动解析
+ * @param bool    $required 未找到服务时是否抛异常
+ * @param bool    $lazy    懒加载模式，生成代理类延迟第一次访问时才解析
  */
 declare (strict_types=1);
 

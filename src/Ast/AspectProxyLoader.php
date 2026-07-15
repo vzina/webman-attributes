@@ -1,11 +1,15 @@
 <?php
-
+/**
+ * AspectProxyLoader — AOP 代理文件生成器。
+ *
+ * 扫描所有需要代理的类，解析源码 AST，注入 PropertyTrait + 方法改写，
+ * 生成 .proxy.php 文件并更新类映射。
+ */
 declare (strict_types=1);
 
 namespace Vzina\Attributes\Ast;
 
 use PhpParser\NodeTraverser;
-use Vzina\Attributes\Attribute\Aspect;
 use Vzina\Attributes\Collector\AspectCollector;
 use Vzina\Attributes\Collector\AttributeCollector;
 use Vzina\Attributes\Reflection\Composer;
@@ -13,80 +17,67 @@ use Vzina\Attributes\Scan\Options;
 
 class AspectProxyLoader implements ProxyLoaderInterface
 {
-
     public function __invoke(Options $option, array &$classMap): void
     {
-        $astParser = AstParser::getInstance();
-        $originalClassMap = $classMap;
-        $proxyDir = $option->proxyPath();
-        $cacheFile = $option->cachePath() . '/aspects.cache';
+        $astParser   = AstParser::getInstance();
+        $proxyDir    = $option->proxyPath();
+        $cacheFile   = $option->cachePath() . '/aspects.cache';
 
         $this->loadAspects($option->aspects(), $cacheFile);
 
-        foreach ($this->getProxyClasses($originalClassMap) as $className) {
+        // 从全量 Composer classMap 中匹配代理目标（含 vendor 类）
+        $fullMap = array_merge($classMap, Composer::getLoader()->getClassMap());
+
+        foreach ($this->getProxyClasses($fullMap) as $className) {
             $proxyFile = path_combine($proxyDir, str_replace('\\', '_', $className) . '.proxy.php');
-
             if (! file_exists($proxyFile) ||
-                (isset($originalClassMap[$className]) && filemtime($proxyFile) < filemtime($originalClassMap[$className]))
+                (isset($classMap[$className]) && filemtime($proxyFile) < filemtime($classMap[$className]))
             ) {
-                file_put_contents($proxyFile, $this->proxy($astParser, $className), LOCK_EX);
+                file_put_contents($proxyFile, $this->generate($astParser, $className), LOCK_EX);
             }
-
             $classMap[$className] = $proxyFile;
         }
     }
 
-    /**
-     * 生成代理类代码
-     */
-    protected function proxy(AstParser $astParser, string $className): string
+    /** 解析源码 → 注入 Trait/方法改写 → 输出代理类代码 */
+    private function generate(AstParser $astParser, string $className): string
     {
-        $code = Composer::getCodeByClassName($className);
-        $stmts = $astParser->parse($code);
-
+        $stmts    = $astParser->parse(Composer::getCodeByClassName($className));
         $traverser = new NodeTraverser();
-        $visitorMetadata = new AstVisitorMetadata($className);
+        $meta     = new AstVisitorMetadata($className);
 
-        // 遍历并应用所有AST访问器
-        foreach (clone AstVisitorManager::getQueue() as $visitorClass) {
-            $traverser->addVisitor(new $visitorClass($visitorMetadata));
+        foreach (AstVisitorManager::getVisitors() as $visitor) {
+            $traverser->addVisitor(new $visitor($meta));
         }
 
-        $modifiedStmts = $traverser->traverse($stmts);
-
-        return $astParser->prettyPrintFile($modifiedStmts);
+        return $astParser->prettyPrintFile($traverser->traverse($stmts));
     }
 
-    protected function getProxyClasses(array $originalClassMap): array
+    /** 确定哪些类需要代理（class 规则 + attribute 规则匹配） */
+    private function getProxyClasses(array $classMap): array
     {
-        $proxies = [];
-        $classesAspects = AspectCollector::get('classes', []);
-        $attributeAspects = AspectCollector::get('attributes', []);
-        foreach ($classesAspects as $rules) {
-            foreach ($rules as $rule) {
-                foreach ($originalClassMap as $class => $path) {
-                    if (! $this->isMatch($rule, $class)) {
-                        continue;
-                    }
-                    $proxies[$class] = true;
-                }
-            }
+        $proxies    = [];
+        $classRules = AspectCollector::get('classes', []);
+        $attrRules  = AspectCollector::get('attributes', []);
+
+        if (empty($classRules) && empty($attrRules)) {
+            return [];
         }
 
-        foreach ($originalClassMap as $className => $path) {
-            $class = $this->retrieveAttributes($className . '._c');
-            $method = $this->retrieveAttributes($className . '._m');
-            $property = $this->retrieveAttributes($className . '._p');
-
-            $attributes = array_unique(array_merge($class, $method, $property));
-            if ($attributes) {
-                foreach ($attributeAspects as $rules) {
-                    foreach ($rules as $rule) {
-                        foreach ($attributes as $attribute) {
-                            if ($this->isMatch($rule, $attribute)) {
-                                $proxies[$className] = true;
-                            }
-                        }
+        foreach ($classMap as $className => $_) {
+            // class 规则
+            foreach ($classRules as $rules) {
+                foreach ($rules as $rule) {
+                    if ($this->isMatch($rule, $className)) { $proxies[$className] = true; continue 2; }
+                }
+            }
+            // attribute 规则
+            $attrs = $this->collectClassAttributes($className);
+            if (empty($attrs)) continue;
+            foreach ($attrRules as $rules) {
+                foreach ($rules as $rule) {
+                    foreach ($attrs as $attr) {
+                        if (AspectCollector::matchRule($rule, $attr)) { $proxies[$className] = true; continue 3; }
                     }
                 }
             }
@@ -95,91 +86,77 @@ class AspectProxyLoader implements ProxyLoaderInterface
         return array_keys($proxies);
     }
 
-    protected function retrieveAttributes(string $key): array
+    /** 提取类的所有属性名列表 */
+    private function collectClassAttributes(string $className): array
     {
-        $defined = [];
-        $attributes = AttributeCollector::get($key, []);
-
-        foreach ($attributes as $name => $attribute) {
-            if (is_object($attribute)) {
-                $defined[] = $name;
-            } else {
-                $defined = array_merge($defined, array_keys($attribute));
+        $attrs = [];
+        foreach (['_c', '_m', '_p'] as $suffix) {
+            foreach (AttributeCollector::get($className . '.' . $suffix, []) as $name => $val) {
+                $attrs[] = $name;
+                if (is_array($val)) { array_push($attrs, ...array_keys($val)); }
             }
         }
-        return $defined;
+        return array_unique($attrs);
     }
 
-    protected function isMatch(string $rule, string $target): bool
+    private function isMatch(string $rule, string $target): bool
     {
-        if (strpos($rule, '::') !== false) {
-            [$rule,] = explode('::', $rule);
+        if (str_contains($rule, '::')) {
+            [$rule] = explode('::', $rule);
         }
-        if (strpos($rule, '*') === false && $rule === $target) {
-            return true;
-        }
-        $preg = str_replace(['*', '\\'], ['.*', '\\\\'], $rule);
-        $pattern = "/^{$preg}$/";
-
-        if (preg_match($pattern, $target)) {
-            return true;
-        }
-
-        return false;
+        return AspectCollector::matchRule($rule, $target);
     }
 
-    protected function loadAspects($aspects, string $cacheFile): void
+    /** 加载切面规则（增量检测变更） */
+    private function loadAspects(array $aspects, string $cacheFile): void
     {
-        [$removed, $changed] = $this->getChangedAspects($aspects, $cacheFile);
-        foreach ($removed as $aspect) {
-            AspectCollector::clear($aspect);
-        }
+        [$removed, $changed] = $this->diffAspects($aspects, $cacheFile);
+        foreach ($removed as $a) { AspectCollector::clear($a); }
 
         foreach ($aspects as $key => $value) {
-            [$aspect, $priority] = is_numeric($key) ? [$value, null] : [$key, (int)$value];
-            if (! in_array($aspect, $changed, true)) {
-                continue;
+            [$name, $priority] = is_numeric($key) ? [$value, null] : [$key, (int) $value];
+            if (! in_array($name, $changed, true)) continue;
+
+            try {
+                $props = (new \ReflectionClass($name))->getDefaultProperties();
+                AspectCollector::setAround($name,
+                    $props['classes'] ?? [], $props['attributes'] ?? [], $props['priority'] ?? $priority);
+            } catch (\ReflectionException) {
+                AspectCollector::setAround($name, [], [], $priority);
             }
-
-            AspectLoader::collect($aspect, ['priority' => $priority]);
         }
     }
 
-    protected function getChangedAspects(array $aspects, string $cacheFile): array
+    /** 检测切面类的增删改 */
+    private function diffAspects(array $aspects, string $cacheFile): array
     {
-        $classes = [];
-        $lastCacheModified = file_exists($cacheFile) ? filemtime($cacheFile) : 0;
-        foreach ($aspects as $key => $value) {
-            $classes[] = is_numeric($key) ? $value : $key;
-        }
+        $names = [];
+        $cacheMtime = file_exists($cacheFile) ? filemtime($cacheFile) : 0;
+        foreach ($aspects as $k => $v) { $names[] = is_numeric($k) ? $v : $k; }
 
-        $data = [];
+        $old = [];
         if (file_exists($cacheFile)) {
-            $data = unserialize(file_get_contents($cacheFile));
+            $raw = file_get_contents($cacheFile);
+            $old = ($raw !== false) ? (array) unserialize($raw, ['allowed_classes' => []]) : [];
         }
+        file_put_contents($cacheFile, serialize($names));
 
-        file_put_contents($cacheFile, serialize($classes));
-
-        $diff = array_diff($data, $classes);
-        $changed = array_diff($classes, $data);
         $removed = [];
-        foreach ($diff as $item) {
-            $annotation = AttributeCollector::getClassAttribute($item, Aspect::class);
-            if (is_null($annotation)) {
+        foreach (array_diff($old, $names) as $item) {
+            if (! AttributeCollector::getClassAttribute($item, 'Vzina\Attributes\Attribute\Aspect')) {
                 $removed[] = $item;
             }
         }
+        $changed = array_diff($names, $old);
 
+        // 文件修改时间发生变化的切面类也算 changed
         $loader = Composer::getLoader();
-        foreach ($classes as $class) {
-            if (($file = $loader->findFile($class)) && $lastCacheModified <= filemtime($file)) {
-                $changed[] = $class;
+        foreach ($names as $name) {
+            if (($f = $loader->findFile($name)) && $cacheMtime <= filemtime($f)) {
+                $changed[] = $name;
             }
         }
 
-        return [
-            array_values(array_unique($removed)),
-            array_values(array_unique($changed)),
-        ];
+        return [array_values(array_unique($removed)), array_values(array_unique($changed))];
     }
 }

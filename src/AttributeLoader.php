@@ -1,160 +1,102 @@
 <?php
 /**
- * AttributeLoader.php
- * PHP version 7
+ * AttributeLoader — 插件入口，从 Composer files autoload 阶段调用。
  *
- * @package attributes
- * @author  weijian.ye
- * @contact 891718689@qq.com
- * @link    https://github.com/vzina
+ * 职责：加载配置 → 注册内置组件 → 扫描类收集属性 → 生成代理文件 → 更新类映射。
+ * 通过 PcntlHandler 子进程隔离类加载，确保代理文件可替换原始类。
  */
 declare (strict_types=1);
 
 namespace Vzina\Attributes;
 
-use FilesystemIterator;
-use Illuminate\Support\Arr;
 use PhpParser\NodeVisitor;
-use RecursiveDirectoryIterator;
-use RecursiveIteratorIterator;
 use Vzina\Attributes\Ast\AstVisitorManager;
 use Vzina\Attributes\Attribute\PropertyHandlerInterface;
 use Vzina\Attributes\Collector\PropertyManagerCollector;
 use Vzina\Attributes\Reflection\Composer;
 use Vzina\Attributes\Scan\Options;
 use Vzina\Attributes\Scan\Scanner;
-use Webman\Util;
 
 class AttributeLoader
 {
+    /** 内置组件默认值，用户可通过 attribute.php 同名字段覆盖 */
+    private const DEFAULTS = [
+        'collectors' => [
+            Collector\AttributeCollector::class,
+            Collector\AspectCollector::class,
+            Collector\ConstantsCollector::class,
+        ],
+        'aspects' => [
+            Attribute\InjectAspect::class,
+            Attribute\ValueAspect::class,
+            Attribute\CacheableAspect::class,
+        ],
+        'property_handlers' => [
+            Attribute\InjectPropertyHandler::class,
+            Attribute\ValuePropertyHandler::class,
+        ],
+        'ast_visitors' => [
+            Ast\AstPropertyVisitor::class,
+            Ast\AstProxyCallVisitor::class,
+        ],
+        'ast_proxy_loaders' => [
+            Ast\AspectProxyLoader::class,
+            Ast\LazyLoader\LazyLoader::class,
+        ],
+    ];
+
+    /** 由 bootstrap.php (Composer files autoload) 调用 */
     public static function init(): void
     {
-        // 初始化配置和Composer加载器
         $option = static::initOptions();
-        if ($option === null) return;
+        if ($option === null) {
+            return;
+        }
 
         $loader = Composer::getLoader();
-        if (! empty($option->classMap())) {
+
+        // 手动类映射
+        if ($option->classMap()) {
             $loader->addClassMap($option->classMap());
         }
 
-        // 注册AST访问器
+        // AST 访问器（代理代码生成时使用）
         foreach ($option->astVisitors() as $visitor) {
             if (class_exists($visitor) && in_array(NodeVisitor::class, class_implements($visitor), true)) {
                 AstVisitorManager::exists($visitor) or AstVisitorManager::insert($visitor);
             }
         }
 
-        // 注册属性注入逻辑
-        foreach ($option->propertyHandlers() as $propertyHandler) {
-            if (class_exists($propertyHandler) &&
-                ($instance = new $propertyHandler) &&
+        // 属性注入处理器（构造时调用 __handlePropertyHandler）
+        foreach ($option->propertyHandlers() as $handler) {
+            if (class_exists($handler) &&
+                ($instance = new $handler) &&
                 $instance instanceof PropertyHandlerInterface
             ) {
                 PropertyManagerCollector::register($instance->getAttribute(), $instance);
             }
         }
 
+        // 扫描 → 收集属性 → 生成代理 → 返回含代理的类映射
         $classMap = (new Scanner($option))->scan($loader->getClassMap());
         $loader->addClassMap($classMap);
     }
 
-    protected static function initOptions(): ?Options
+    /** 加载配置，优先用户覆盖，回退内置默认 */
+    private static function initOptions(): ?Options
     {
-        $file = config_path('plugin/vzina/attributes/app.php');
-        if (! file_exists($file)) {
+        $appFile = config_path('plugin/vzina/attributes/app.php');
+        if (! file_exists($appFile)) {
+            return null;
+        }
+        $app = (array) include $appFile;
+        if (empty($app['enable'])) {
             return null;
         }
 
-        $app = (array)include $file;
-        if (empty($app) || empty($app['enable']) || empty($app['autoload'])) {
-            return null;
-        }
-        $config = static::loadAllFromDir(['attribute']);
+        $configFile = config_path('plugin/vzina/attributes/attribute.php');
+        $config = file_exists($configFile) ? (array) include $configFile : [];
 
-        return Options::init($app + $config);
-    }
-
-    public static function loadAllFromDir(array $onlyFiles): array
-    {
-        if (empty($onlyFiles)) {
-            return [];
-        }
-
-        // 加载基础配置
-        $allConfig = static::loadFromDir(config_path(), $onlyFiles);
-
-        // 加载插件配置
-        $pluginDir = base_path('plugin');
-        foreach (Util::scanDir($pluginDir, false) as $name) {
-            $pluginConfigDir = "$pluginDir/$name/config";
-            if (is_dir($pluginConfigDir)) {
-                $pluginConfig = static::loadFromDir($pluginConfigDir, $onlyFiles);
-                if (Arr::has($pluginConfig, $onlyFiles)) {
-                    foreach ($onlyFiles as $file) {
-                        $allConfig = array_merge_recursive($allConfig, $pluginConfig[$file]);
-                    }
-                }
-            }
-        }
-
-        // 合并插件attribute配置
-        $config = [];
-        foreach ($allConfig['plugin'] ?? [] as $projectConfigs) {
-            if (! is_array($projectConfigs)) {
-                continue;
-            }
-            foreach ($projectConfigs as $project) {
-                if (Arr::has($project, $onlyFiles)) {
-                    foreach ($onlyFiles as $file) {
-                        $config = array_merge_recursive($config, $project[$file]);
-                    }
-                }
-            }
-        }
-        return $config;
-    }
-
-    public static function loadFromDir(string $configPath, array $onlyFiles = []): array
-    {
-        $allConfig = [];
-        if (! is_dir($configPath)) {
-            return $allConfig;
-        }
-
-        $iterator = new RecursiveIteratorIterator(
-            new RecursiveDirectoryIterator($configPath, FilesystemIterator::FOLLOW_SYMLINKS)
-        );
-
-        foreach ($iterator as $file) {
-            // 过滤非PHP文件、指定文件列表外的文件
-            if ($file->isDir() ||
-                $file->getExtension() !== 'php' ||
-                ($onlyFiles && ! in_array($file->getBasename('.php'), $onlyFiles))
-            ) {
-                continue;
-            }
-
-            $appConfigFile = $file->getPath() . '/app.php';
-            if (! is_file($appConfigFile)) continue;
-
-            // 检查app配置是否启用
-            $relativePath = str_replace($configPath . DIRECTORY_SEPARATOR, '', $file->getPathname());
-            $sections = array_reverse(explode(DIRECTORY_SEPARATOR, substr($relativePath, 0, -4)));
-
-            if (count($sections) >= 2) {
-                $appConfig = include $appConfigFile;
-                if (empty($appConfig['enable'])) continue;
-            }
-
-            // 解析配置并按路径层级合并
-            $config = include $file;
-            foreach ($sections as $section) {
-                $config = [$section => $config];
-            }
-            $allConfig = array_replace_recursive($allConfig, $config);
-        }
-
-        return $allConfig;
+        return Options::init(self::DEFAULTS + $config + $app);
     }
 }
