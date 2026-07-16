@@ -17,8 +17,15 @@ use RuntimeException;
 
 class PcntlHandler implements ScanHandlerInterface
 {
+    /** 防止嵌套 fork：fork 后子进程标记为 true，再次 scan() 直接返回 false */
+    private static bool $forked = false;
+
     public function scan(): Scanned
     {
+        if (self::$forked) {
+            return new Scanned(false);
+        }
+
         $pid = pcntl_fork();
         if ($pid == -1) {
             throw new RuntimeException('The process fork failed');
@@ -28,6 +35,7 @@ class PcntlHandler implements ScanHandlerInterface
             return new Scanned(true);
         }
 
+        self::$forked = true;
         return new Scanned(false);
     }
 

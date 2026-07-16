@@ -29,7 +29,7 @@ class Options
     {
         $class = $this->options['scan_handler'] ?? null;
         if ($class === null) {
-            $class = function_exists('pcntl_fork') ? PcntlHandler::class : DirectHandler::class;
+            $class = PcntlHandler::class;
         }
         return new $class;
     }

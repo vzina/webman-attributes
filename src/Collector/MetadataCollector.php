@@ -75,6 +75,7 @@ abstract class MetadataCollector implements MetadataCollectorInterface
 
     /**
      * Load container from a PHP cache file.
+     * file_get_contents + eval 替代 include，彻底绕过 OPcache 文件缓存。
      * @return array The loaded data (also stored in static::$container).
      */
     public static function loadFromFile(string $filePath): array
@@ -82,7 +83,17 @@ abstract class MetadataCollector implements MetadataCollectorInterface
         if (! file_exists($filePath)) {
             return [];
         }
-        return static::$container = (array) include $filePath;
+        clearstatcache(true, $filePath);
+
+        $content = file_get_contents($filePath);
+        if ($content === false) {
+            return [];
+        }
+
+        if (preg_match('/\breturn\s+(.+);\s*$/s', $content, $m)) {
+            return static::$container = eval("return {$m[1]};");
+        }
+        return [];
     }
 
     public static function list(): array

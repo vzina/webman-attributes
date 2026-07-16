@@ -7,6 +7,7 @@ Lightweight PHP 8.1+ attribute-driven AOP & DI toolkit for the [Webman](https://
 - **Lazy injection** — auto-generated proxy classes defer service resolution until first access
 - **OPcache-friendly caching** — PHP-native `var_export`/`include` cache format, no `unserialize` overhead
 - **Multi-process safe** — per-worker scanning with `pcntl_fork` isolation and file locks
+- **18 built-in annotations** — DI, AOP, cache, cron, events, routes, validation, transactions, logging, retry, tracing, middleware, CLI commands
 
 ---
 
@@ -336,6 +337,173 @@ class MetricsCollector
 
 ---
 
+### 11. Database Transactions (`#[Transactional]`)
+
+```php
+use Vzina\Attributes\Attribute\Transactional;
+
+class OrderService
+{
+    #[Transactional(connection: 'default', attempts: 3)]
+    public function placeOrder(array $data): Order
+    {
+        $order = Order::create($data);
+        $order->items()->createMany($data['items']);
+        return $order;
+    }
+}
+```
+
+正常返回 commit，异常 rollback。`attempts > 1` 时自动重试死锁（MySQL 1213 / PostgreSQL 40P01）。
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `connection` | `string` | `'default'` | 数据库连接名 |
+| `attempts` | `int` | `1` | 死锁重试次数 |
+| `transactionHandler` | `mixed` | `null` | 自定义事务处理器 callable |
+
+### 12. Method Logging (`#[Log]`)
+
+```php
+use Vzina\Attributes\Attribute\Log;
+
+class PaymentService
+{
+    #[Log(level: 'info', channel: 'payment', logArgs: true)]
+    public function charge(int $userId, float $amount): Receipt
+    {
+        // [vzina] PaymentService::charge called
+        // [vzina] PaymentService::charge completed in 12.34ms
+        return new Receipt(...);
+    }
+}
+```
+
+支持消息模板：`#[Log(message: 'Processing #{orderId}')]`。
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `level` | `string` | `'info'` | 日志级别 |
+| `channel` | `?string` | `null` | 日志通道 |
+| `message` | `?string` | `null` | 消息模板，`#{params.key}` 插值 |
+| `logArgs` | `bool` | `false` | 上下文包含入参 |
+| `logResult` | `bool` | `false` | 上下文包含返回值 |
+
+### 13. Request Validation (`#[Validate]`)
+
+```php
+use Vzina\Attributes\Attribute\Validate;
+
+#[Validate(rules: [
+    'name'  => 'required|min:3',
+    'email' => 'required|email',
+])]
+public function store(Request $request): Response
+{
+    // 校验通过才执行，失败抛 ValidateException (HTTP 422)
+    return json(User::create($request->all()));
+}
+```
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `rules` | `array` | `[]` | 校验规则 |
+| `messages` | `array` | `[]` | 自定义错误消息 |
+| `requestParam` | `?string` | `null` | Request 参数名，null=自动发现 |
+| `validator` | `mixed` | `null` | 自定义校验器 callable |
+
+### 14. Automatic Retry (`#[Retry]`)
+
+```php
+use Vzina\Attributes\Attribute\Retry;
+
+#[Retry(maxAttempts: 3, delayMs: 100, backoff: 2.0, on: [NetworkException::class])]
+public function callApi(): array
+{
+    return $this->http->get('https://api.example.com/data');
+}
+```
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `maxAttempts` | `int` | `3` | 最大尝试次数，硬上限 100 |
+| `delayMs` | `int` | `100` | 基础延迟毫秒 |
+| `backoff` | `float` | `1.0` | 退避倍率 |
+| `on` | `array` | `[]` | 仅重试这些异常，空=全部 |
+
+### 15. Controller Middleware (`#[Middleware]`)
+
+```php
+use Vzina\Attributes\Attribute\Middleware;
+
+#[Controller(prefix: '/api')]
+#[Middleware(App\Middleware\Auth::class)]
+class ApiController
+{
+    #[GetMapping(path: '/profile')]
+    #[Middleware(App\Middleware\RateLimit::class)]
+    public function profile(): Response { ... }
+}
+```
+
+可重复使用。类级作用于全部路由，方法级仅作用于当前。
+
+### 16. Distributed Tracing (`#[Trace]`)
+
+```php
+use Vzina\Attributes\Attribute\Trace;
+
+#[Trace(spanName: 'order.checkout')]
+public function checkout(int $orderId): Order { ... }
+```
+
+W3C Trace Context 标准，通过 `support\Context` 传播 traceId/spanId。
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `spanName` | `?string` | `null` | span 名称 |
+| `tracer` | `mixed` | `null` | 自定义 tracer callable |
+
+### 17. OpenAPI Generator
+
+```bash
+php webman attributes:openapi --output=public/openapi.json
+```
+
+扫描 `#[Controller]` + 路由注解 → OpenAPI 3.0 JSON。
+
+### 18. CLI Commands (`#[Command]`)
+
+```php
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Output\OutputInterface;
+use Vzina\Attributes\Attribute\Command as CommandAttribute;
+
+#[CommandAttribute(name: 'app:greet', description: 'Say hello to the user')]
+class GreetCommand extends Command
+{
+    protected function execute(InputInterface $input, OutputInterface $output): int
+    {
+        $output->writeln('Hello, Webman!');
+        return Command::SUCCESS;
+    }
+}
+```
+
+`#[Command]` 标记的类会被自动注册到 webman 命令行，无需手动编辑 `command.php`。
+
+```bash
+php webman app:greet
+```
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `name` | `string` | **required** | 命令名称 |
+| `description` | `?string` | `null` | 命令描述 |
+
+---
+
 ## Cache & Performance
 
 ### Cache Directory Structure
@@ -368,12 +536,15 @@ First boot after cache clear triggers a full scan (child process), second boot l
 ## Testing
 
 ```bash
-php82 vendor/bin/phpunit test/ --no-coverage
+php82 vendor/bin/phpunit test/
 
 # By module
+php82 vendor/bin/phpunit test/Attribute/   # 291 tests, 620 assertions
 php82 vendor/bin/phpunit test/Collector/
 php82 vendor/bin/phpunit test/Ast/
+php82 vendor/bin/phpunit test/Scan/
 php82 vendor/bin/phpunit test/Reflection/
+php82 vendor/bin/phpunit test/OpenApi/
 ```
 
 ---

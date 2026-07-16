@@ -25,6 +25,7 @@ class Listener extends AbstractAttribute
 
     public function collectClass(string $className): void
     {
+        parent::collectClass($className);
         if (method_exists($className, 'handle')) {
             $this->collectMethod($className, 'handle');
         }

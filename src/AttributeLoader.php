@@ -30,6 +30,10 @@ class AttributeLoader
             Attribute\InjectAspect::class,
             Attribute\ValueAspect::class,
             Attribute\CacheableAspect::class,
+            Attribute\TransactionalAspect::class,
+            Attribute\ValidateAspect::class,
+            Attribute\RetryAspect::class,
+            Attribute\TraceAspect::class,
         ],
         'property_handlers' => [
             Attribute\InjectPropertyHandler::class,
