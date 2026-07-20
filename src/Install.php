@@ -1,4 +1,9 @@
 <?php
+/**
+ * Install — webman 插件安装/卸载。
+ *
+ * 将 config 目录复制到目标项目，实现插件的自注册。
+ */
 namespace Vzina\Attributes;
 
 class Install

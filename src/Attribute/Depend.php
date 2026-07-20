@@ -1,5 +1,10 @@
 <?php
-
+/**
+ * Depend — 容器依赖注册注解。
+ *
+ * 标记类需要注册到 webman 容器，支持自定义 id、优先级、构造参数和单例模式。
+ * DependHandler 在 Worker 启动时收集并注入容器。
+ */
 declare (strict_types=1);
 
 namespace Vzina\Attributes\Attribute;

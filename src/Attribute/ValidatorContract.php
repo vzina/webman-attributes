@@ -1,0 +1,18 @@
+<?php
+/**
+ * ValidatorContract.php
+ * PHP version 7
+ *
+ * @package openai-web
+ * @author  weijian.ye
+ * @contact 891718689@qq.com
+ * @link    https://github.com/vzina
+ */
+declare (strict_types=1);
+
+namespace Vzina\Attributes\Attribute;
+
+interface ValidatorContract
+{
+    public function __invoke(array $data, array $rules, array $messages): array;
+}

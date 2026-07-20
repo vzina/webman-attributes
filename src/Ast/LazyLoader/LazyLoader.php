@@ -1,5 +1,11 @@
 <?php
-
+/**
+ * LazyLoader — 懒加载代理生成器。
+ *
+ * 扫描所有 #[Inject(lazy: true)] 属性，为目标类生成延迟代理：
+ * 代理类在首次方法调用时才从容器解析真实实例。
+ * 根据目标类型自动选择 Class/Interface/Fallback 代理构建器。
+ */
 declare (strict_types=1);
 
 namespace Vzina\Attributes\Ast\LazyLoader;

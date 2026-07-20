@@ -5,7 +5,6 @@
  * 为方法调用创建追踪 span，记录耗时和状态。W3C Trace Context 标准。
  *
  * @param ?string $spanName span 名称，null 时自动 ClassName::methodName
- * @param mixed   $tracer   自定义 tracer callable，null=默认 W3C handler
  */
 declare (strict_types=1);
 
@@ -18,7 +17,6 @@ class Trace extends AbstractAttribute
 {
     public function __construct(
         public ?string $spanName = null,
-        public $tracer = null,
     ) {
     }
 }

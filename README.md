@@ -6,8 +6,8 @@ Lightweight PHP 8.1+ attribute-driven AOP & DI toolkit for the [Webman](https://
 - **AOP via AST** — method-level proxy generation using nikic/php-parser, transparent to business code
 - **Lazy injection** — auto-generated proxy classes defer service resolution until first access
 - **OPcache-friendly caching** — PHP-native `var_export`/`include` cache format, no `unserialize` overhead
-- **Multi-process safe** — per-worker scanning with `pcntl_fork` isolation and file locks
-- **18 built-in annotations** — DI, AOP, cache, cron, events, routes, validation, transactions, logging, retry, tracing, middleware, CLI commands
+- **Multi-process safe** — per-worker scanning with `pcntl_fork` isolation (30s timeout guard)
+- **17 built-in annotations** — DI, AOP, cache, cron, events, routes, validation, transactions, retry, tracing, middleware, CLI commands
 
 ---
 
@@ -89,7 +89,7 @@ Worker startup
 
 **Child process isolation** — `PcntlHandler` forks a child during the initial scan. The child loads original classes (for attribute collection), generates proxy files, and exits. The parent/webman worker never loads originals, so the Composer class map can safely redirect to proxy files.
 
-**PHP cache files** — All collector data is serialized via `var_export()` into `.cache.php` files. This leverages OPcache for zero-overhead deserialization and avoids the security risks of `unserialize()`.
+**PHP cache files** — All collector data is serialized via `var_export()` into `.cache.php` files. Safe `include`-in-closure reading bypasses OPcache file caching without `eval()` security risks.
 
 **AST-level method rewriting** — `AstProxyCallVisitor` rewrites method bodies at the AST level to delegate through `__proxyCall()`, which drives the Laravel Pipeline of aspect instances.
 
@@ -316,7 +316,7 @@ class ExpensiveService
 | `id` | `?string` | `null` | Container key. Defaults to the class FQCN. |
 | `priority` | `int` | `0` | Registration priority (higher = registered first, wins on duplicate id). |
 | `params` | `array` | `[]` | Explicit constructor argument overrides: `['paramName' => 'value']`. |
-| `singleton` | `bool` | `false` | Cache the instance across `Container::get()` calls (one per worker). |
+| `singleton` | `bool` | `true` | 容器单例，true 时 `Container::get()` 缓存实例 |
 
 **Argument resolution priority:** `params['name']` → container auto-wiring → default value → throws.
 
@@ -362,34 +362,7 @@ class OrderService
 | `attempts` | `int` | `1` | 死锁重试次数 |
 | `transactionHandler` | `mixed` | `null` | 自定义事务处理器 callable |
 
-### 12. Method Logging (`#[Log]`)
-
-```php
-use Vzina\Attributes\Attribute\Log;
-
-class PaymentService
-{
-    #[Log(level: 'info', channel: 'payment', logArgs: true)]
-    public function charge(int $userId, float $amount): Receipt
-    {
-        // [vzina] PaymentService::charge called
-        // [vzina] PaymentService::charge completed in 12.34ms
-        return new Receipt(...);
-    }
-}
-```
-
-支持消息模板：`#[Log(message: 'Processing #{orderId}')]`。
-
-| Parameter | Type | Default | Description |
-|---|---|---|---|
-| `level` | `string` | `'info'` | 日志级别 |
-| `channel` | `?string` | `null` | 日志通道 |
-| `message` | `?string` | `null` | 消息模板，`#{params.key}` 插值 |
-| `logArgs` | `bool` | `false` | 上下文包含入参 |
-| `logResult` | `bool` | `false` | 上下文包含返回值 |
-
-### 13. Request Validation (`#[Validate]`)
+### 12. Request Validation (`#[Validate]`)
 
 ```php
 use Vzina\Attributes\Attribute\Validate;
@@ -409,10 +382,17 @@ public function store(Request $request): Response
 |---|---|---|---|
 | `rules` | `array` | `[]` | 校验规则 |
 | `messages` | `array` | `[]` | 自定义错误消息 |
-| `requestParam` | `?string` | `null` | Request 参数名，null=自动发现 |
-| `validator` | `mixed` | `null` | 自定义校验器 callable |
+| `requestParam` | `?string` | `null` | Request 参数名，null=自动发现（含子类） |
 
-### 14. Automatic Retry (`#[Retry]`)
+**自定义校验器：** 在容器中绑定 `ValidatorContract` 即可替换默认实现：
+```php
+// dependence.php
+return [
+    ValidatorContract::class => App\Validate\CustomValidator::class,
+];
+```
+
+### 13. Automatic Retry (`#[Retry]`)
 
 ```php
 use Vzina\Attributes\Attribute\Retry;
@@ -424,6 +404,8 @@ public function callApi(): array
 }
 ```
 
+指数退避 + 随机抖动，单次延迟自动封顶 60s 防溢出。
+
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `maxAttempts` | `int` | `3` | 最大尝试次数，硬上限 100 |
@@ -431,7 +413,7 @@ public function callApi(): array
 | `backoff` | `float` | `1.0` | 退避倍率 |
 | `on` | `array` | `[]` | 仅重试这些异常，空=全部 |
 
-### 15. Controller Middleware (`#[Middleware]`)
+### 14. Controller Middleware (`#[Middleware]`)
 
 ```php
 use Vzina\Attributes\Attribute\Middleware;
@@ -448,23 +430,50 @@ class ApiController
 
 可重复使用。类级作用于全部路由，方法级仅作用于当前。
 
-### 16. Distributed Tracing (`#[Trace]`)
+### 15. Distributed Tracing (`#[Trace]`)
+
+符合 W3C Trace Context Level 2 规范，traceId: 32 hex (16 bytes)，spanId: 16 hex (8 bytes)。
 
 ```php
 use Vzina\Attributes\Attribute\Trace;
 
 #[Trace(spanName: 'order.checkout')]
-public function checkout(int $orderId): Order { ... }
+public function checkout(int $orderId): Order
+{
+    // 在 span 内写入自定义属性
+    Span::setAttribute('order_id', $orderId);
+    Span::setAttribute('amount', 99.9);
+
+    return $this->service->checkout($orderId);
+}
 ```
 
-W3C Trace Context 标准，通过 `support\Context` 传播 traceId/spanId。
+**跨进程传播（traceparent）：**
+
+```php
+// 1. 从上游 HTTP 请求恢复追踪上下文
+Span::applyTraceparent($request->header('traceparent'));
+
+// 2. 在 #[Trace] 包裹的方法内正常执行
+
+// 3. 向下游发起请求时，传播 traceparent
+$response = $http->get($url, ['traceparent' => Span::getTraceparent()]);
+```
+
+**自定义 Tracer（替换默认 W3C 实现）：**
+
+在 `dependence.php` 中绑定 `TracerContract`：
+```php
+return [
+    TracerContract::class => App\Trace\JaegerTracer::class,
+];
+```
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
-| `spanName` | `?string` | `null` | span 名称 |
-| `tracer` | `mixed` | `null` | 自定义 tracer callable |
+| `spanName` | `?string` | `null` | span 名称，null 时自动 `ClassName::methodName` |
 
-### 17. OpenAPI Generator
+### 16. OpenAPI Generator
 
 ```bash
 php webman attributes:openapi --output=public/openapi.json
@@ -472,7 +481,7 @@ php webman attributes:openapi --output=public/openapi.json
 
 扫描 `#[Controller]` + 路由注解 → OpenAPI 3.0 JSON。
 
-### 18. CLI Commands (`#[Command]`)
+### 17. CLI Commands (`#[Command]`)
 
 ```php
 use Symfony\Component\Console\Command\Command;
@@ -539,7 +548,7 @@ First boot after cache clear triggers a full scan (child process), second boot l
 php82 vendor/bin/phpunit test/
 
 # By module
-php82 vendor/bin/phpunit test/Attribute/   # 291 tests, 620 assertions
+php82 vendor/bin/phpunit test/Attribute/   # 308 tests, 672 assertions
 php82 vendor/bin/phpunit test/Collector/
 php82 vendor/bin/phpunit test/Ast/
 php82 vendor/bin/phpunit test/Scan/
@@ -567,3 +576,8 @@ Auto-falls back to `DirectHandler`. Scanning runs in-process; proxies activate a
 
 ### Routes not registered
 Ensure `config/plugin/vzina/attributes/route.php` contains `DispatcherFactory::init()` and `config/plugin/vzina/attributes/app.php` has `enable => true`.
+
+### Tracing not propagating across services
+1. Ensure upstream service sends `traceparent` header
+2. In middleware, call `Span::applyTraceparent($request->header('traceparent'))` before business logic
+3. Use `Span::getTraceparent()` when making downstream HTTP requests

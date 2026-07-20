@@ -2,8 +2,7 @@
 /**
  * TraceAspect — #[Trace] 切面。
  *
- * #[Trace(tracer: $fn)] → 逐方法 callable 覆盖。
- * 否则 → 从容器解析 TracerContract，未绑定时回退 W3CTracer。
+ * 从容器解析 TracerContract，未绑定时回退 W3CTracer。
  */
 declare (strict_types=1);
 
@@ -27,21 +26,16 @@ class TraceAspect implements AspectInterface
 
         $name = $attr->spanName ?? $point->className . '::' . $point->methodName;
 
-        // 逐方法 callable 覆盖
-        if ($attr->tracer && is_callable($attr->tracer)) {
-            return ($attr->tracer)($name, $point, fn() => $point->process());
-        }
-
-        // 容器解析 TracerContract，未绑定则 W3C
         return $this->resolveTracer()->trace($name, fn() => $point->process());
     }
 
-    private function resolveTracer(): TracerContract
+    protected function resolveTracer(): TracerContract
     {
         if (class_exists(\support\Container::class)) {
             try {
                 $tracer = \support\Container::get(TracerContract::class);
-            } catch (\Throwable) {
+            } catch (\Throwable $e) {
+                error_log('[TraceAspect] Container::get(TracerContract) failed: ' . $e->getMessage());
                 $tracer = null;
             }
             if ($tracer instanceof TracerContract) {

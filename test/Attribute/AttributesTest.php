@@ -24,6 +24,8 @@ use Vzina\Attributes\Attribute\RetryAspect;
 use Vzina\Attributes\Attribute\Trace;
 use Vzina\Attributes\Attribute\TraceAspect;
 use Vzina\Attributes\Attribute\TraceContext;
+use Vzina\Attributes\Attribute\ValidatorContract;
+use Vzina\Attributes\Trace\TracerContract;
 use Vzina\Attributes\Trace\W3CTracer;
 use Vzina\Attributes\Attribute\Transactional;
 use Vzina\Attributes\Attribute\TransactionalAspect;
@@ -500,13 +502,27 @@ class AttributesTest extends TestCase
             return ['name' => ['The name field is required.']];
         };
 
+        // 匿名子类注入自定义校验器
+        $aspect = new class($handler) extends ValidateAspect {
+            private $mock;
+            public function __construct($mock) { $this->mock = $mock; }
+            protected function resolveValidator(): ValidatorContract {
+                return new class($this->mock) implements ValidatorContract {
+                    private $mock;
+                    public function __construct($mock) { $this->mock = $mock; }
+                    public function __invoke(array $data, array $rules, array $messages): array {
+                        return ($this->mock)($data, $rules, $messages);
+                    }
+                };
+            }
+        };
+
         AttributeCollector::collectMethod(
             'TestClass', 'testMethod', Validate::class,
-            new Validate(rules: ['name' => 'required'], requestParam: 'request', validator: $handler)
+            new Validate(rules: ['name' => 'required'], requestParam: 'request')
         );
 
-        $aspect = new ValidateAspect();
-        $points   = $this->createJoinPoint(fn() => 'ok');
+        $points = $this->createJoinPoint(fn() => 'ok');
         $ref = new \ReflectionProperty($points, 'arguments');
         $ref->setValue($points, ['keys' => ['request' => new \stdClass], 'order' => []]);
 
@@ -517,17 +533,30 @@ class AttributesTest extends TestCase
     public function testValidateAspectPassesOnValidationSuccess(): void
     {
         $handler = static function (array $data, array $rules, array $msgs): array {
-            return []; // validation passed
+            return [];
+        };
+
+        $aspect = new class($handler) extends ValidateAspect {
+            private $mock;
+            public function __construct($mock) { $this->mock = $mock; }
+            protected function resolveValidator(): ValidatorContract {
+                return new class($this->mock) implements ValidatorContract {
+                    private $mock;
+                    public function __construct($mock) { $this->mock = $mock; }
+                    public function __invoke(array $data, array $rules, array $messages): array {
+                        return ($this->mock)($data, $rules, $messages);
+                    }
+                };
+            }
         };
 
         AttributeCollector::collectMethod(
             'TestClass', 'testMethod', Validate::class,
-            new Validate(rules: ['name' => 'required'], requestParam: 'request', validator: $handler)
+            new Validate(rules: ['name' => 'required'], requestParam: 'request')
         );
 
-        $aspect  = new ValidateAspect();
         $called  = false;
-        $points   = $this->createJoinPoint(function () use (&$called) { $called = true; return 'ok'; });
+        $points  = $this->createJoinPoint(function () use (&$called) { $called = true; return 'ok'; });
         $ref = new \ReflectionProperty($points, 'arguments');
         $ref->setValue($points, ['keys' => ['request' => new \stdClass], 'order' => []]);
 
@@ -679,9 +708,7 @@ class AttributesTest extends TestCase
     public function testTraceDefaultValues(): void
     {
         $t = new Trace();
-
         $this->assertNull($t->spanName);
-        $this->assertNull($t->tracer);
     }
 
     public function testTraceCustomSpanName(): void
@@ -724,17 +751,32 @@ class AttributesTest extends TestCase
     public function testTraceAspectRecordsSuccess(): void
     {
         $spanCalls = [];
-        $handler   = static function (string $name, ...$args) use (&$spanCalls) {
-            $spanCalls[] = $name;
-            return $args[1]();  // call the $execute closure
+
+        // 匿名子类注入自定义 tracer
+        $aspect = new class($spanCalls) extends TraceAspect {
+            private array $calls;
+            public function __construct(array &$calls) { $this->calls = &$calls; }
+            protected function resolveTracer(): TracerContract {
+                return new class($this->calls) implements TracerContract {
+                    private array $calls;
+                    public function __construct(array &$calls) { $this->calls = &$calls; }
+                    public function trace(string $name, \Closure $next): mixed {
+                        $this->calls[] = $name;
+                        return $next();
+                    }
+                    public function currentContext(): ?TraceContext { return null; }
+                    public function setAttribute(string $key, mixed $value): void {}
+                    public function applyTraceparent(?string $tp): void {}
+                    public function getTraceparent(): ?string { return null; }
+                };
+            }
         };
 
         AttributeCollector::collectMethod(
             'TestClass', 'testMethod', Trace::class,
-            new Trace(tracer: $handler)
+            new Trace()
         );
 
-        $aspect  = new TraceAspect();
         $point   = $this->createJoinPoint(fn() => 'traced_ok');
         $result  = $aspect->process($point);
 
@@ -745,16 +787,23 @@ class AttributesTest extends TestCase
 
     public function testTraceAspectPropagatesException(): void
     {
-        $handler = static function (string $name, $point, \Closure $execute) {
-            return $execute();
+        $aspect = new class extends TraceAspect {
+            protected function resolveTracer(): TracerContract {
+                return new class implements TracerContract {
+                    public function trace(string $name, \Closure $next): mixed { return $next(); }
+                    public function currentContext(): ?TraceContext { return null; }
+                    public function setAttribute(string $key, mixed $value): void {}
+                    public function applyTraceparent(?string $tp): void {}
+                    public function getTraceparent(): ?string { return null; }
+                };
+            }
         };
 
         AttributeCollector::collectMethod(
             'TestClass', 'testMethod', Trace::class,
-            new Trace(tracer: $handler)
+            new Trace()
         );
 
-        $aspect = new TraceAspect();
         $point  = $this->createJoinPoint(fn() => throw new \LogicException('trace fail'));
 
         $this->expectException(\LogicException::class);

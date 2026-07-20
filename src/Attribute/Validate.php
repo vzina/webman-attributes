@@ -21,7 +21,6 @@ class Validate extends AbstractAttribute
         public array $rules = [],
         public array $messages = [],
         public ?string $requestParam = null,
-        public $validator = null,
     ) {
     }
 }

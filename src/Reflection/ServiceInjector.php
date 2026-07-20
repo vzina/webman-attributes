@@ -1,5 +1,11 @@
 <?php
-
+/**
+ * ServiceInjector — 服务注册与自动装配。
+ *
+ * 向容器注册服务定义，自动解析构造函数参数：
+ * 显式 params → 容器自动装配 → 默认值。
+ * 使用 AttributeReader 将短类名解析为 FQCN，支持 grouped imports。
+ */
 declare (strict_types=1);
 
 namespace Vzina\Attributes\Reflection;

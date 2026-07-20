@@ -3,13 +3,13 @@
  * ValidateAspect — 请求参数校验切面。
  *
  * 拦截 @Validate 方法：从方法参数中自动发现 Request，调用校验器，通过则继续，失败则抛 ValidateException。
- * 默认校验器尝试 illuminate/validation；用户可通过 Validate(validator: $fn) 注入自定义实现。
+ * 校验器解析优先级：容器 ValidatorContract 绑定 → LaravelValidator 默认实现。
  */
 declare (strict_types=1);
 
 namespace Vzina\Attributes\Attribute;
 
-use Closure;
+use InvalidArgumentException;
 use Vzina\Attributes\Ast\ProceedingJoinPoint;
 use Vzina\Attributes\Exception\ValidateException;
 
@@ -27,11 +27,27 @@ class ValidateAspect implements AspectInterface
 
         $request = $this->findRequest($point, $attr->requestParam);
         if (! $request) {
+            if ($attr->requestParam !== null) {
+                // 用户显式指定了参数名但找不到 → 配置错误
+                throw new InvalidArgumentException(sprintf(
+                    'ValidateAspect: Request parameter "%s" not found in arguments of %s::%s().',
+                    $attr->requestParam,
+                    $point->className,
+                    $point->methodName,
+                ));
+            }
+            // 自动发现也没有 Request → 记录警告后跳过，避免静默绕过校验
+            error_log(sprintf(
+                'ValidateAspect: No Request object found for %s::%s(), validation skipped.',
+                $point->className,
+                $point->methodName,
+            ));
             return $point->process();
         }
 
         $data = method_exists($request, 'all') ? $request->all() : [];
-        $validator = $attr->validator && is_callable($attr->validator) ? $attr->validator : $this->defaultValidator();
+        // 逐方法 callable 覆盖 > 容器 ValidatorContract > LaravelValidator
+        $validator = $this->resolveValidator();
         $errors    = $validator($data, $attr->rules, $attr->messages);
 
         if (! empty($errors)) {
@@ -41,7 +57,7 @@ class ValidateAspect implements AspectInterface
         return $point->process();
     }
 
-    /** 从方法参数中查找 Request 对象 */
+    /** 从方法参数中查找 Request 对象（支持子类继承） */
     private function findRequest(ProceedingJoinPoint $point, ?string $hint): ?object
     {
         if ($hint !== null) {
@@ -51,9 +67,11 @@ class ValidateAspect implements AspectInterface
         try {
             foreach ($point->getReflectMethod()->getParameters() as $param) {
                 $type = $param->getType();
-                if ($type instanceof \ReflectionNamedType &&
-                    in_array($type->getName(), ['support\Request', 'Webman\Http\Request'], true)) {
-                    return $point->arguments['keys'][$param->getName()] ?? null;
+                if ($type instanceof \ReflectionNamedType && ! $type->isBuiltin()) {
+                    $typeName = $type->getName();
+                    if ($this->isRequestType($typeName)) {
+                        return $point->arguments['keys'][$param->getName()] ?? null;
+                    }
                 }
             }
         } catch (\ReflectionException) {
@@ -63,26 +81,30 @@ class ValidateAspect implements AspectInterface
         return null;
     }
 
-    /** 默认校验器：尝试 illuminate/validation */
-    private function defaultValidator(): Closure
+    /** 判断类型是否为 webman Request（含子类） */
+    private function isRequestType(string $typeName): bool
     {
-        return static function (array $data, array $rules, array $messages): array {
-            if (! class_exists(\Illuminate\Validation\Factory::class) || ! class_exists(\Illuminate\Translation\ArrayLoader::class)) {
-                throw new \RuntimeException(
-                    'ValidateAspect requires illuminate/validation and illuminate/translation. Install them or pass a validator callable to the #[Validate] attribute.'
-                );
+        if (in_array($typeName, ['support\Request', 'Webman\Http\Request'], true)) {
+            return true;
+        }
+        // 支持 Request 子类（如 App\Http\Request）
+        return class_exists($typeName) && is_a($typeName, 'support\Request', true);
+    }
+
+    /** 解析校验器：容器 ValidatorContract → LaravelValidator */
+    protected function resolveValidator(): ValidatorContract
+    {
+        if (class_exists(\support\Container::class)) {
+            try {
+                $validator = \support\Container::get(ValidatorContract::class);
+            } catch (\Throwable $e) {
+                error_log('[ValidateAspect] Container::get(ValidatorContract) failed: ' . $e->getMessage());
+                $validator = null;
             }
-
-            $loader    = new \Illuminate\Translation\ArrayLoader();
-            $translator = new \Illuminate\Translation\Translator($loader, 'en');
-            $factory   = new \Illuminate\Validation\Factory($translator);
-            $validator = $factory->make($data, $rules, $messages);
-
-            if ($validator->fails()) {
-                return $validator->errors()->toArray();
+            if ($validator instanceof ValidatorContract) {
+                return $validator;
             }
-
-            return [];
-        };
+        }
+        return new LaravelValidator();
     }
 }
