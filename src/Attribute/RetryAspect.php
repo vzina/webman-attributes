@@ -15,6 +15,9 @@ class RetryAspect implements AspectInterface
 {
     public array $attributes = [Retry::class];
 
+    /** 单次延迟上限（毫秒），防止退避溢出 */
+    private const MAX_DELAY_MS = 60_000;
+
     public function process(ProceedingJoinPoint $point)
     {
         /** @var Retry|null $attr */
@@ -37,9 +40,10 @@ class RetryAspect implements AspectInterface
                 }
 
                 if ($delay > 0) {
-                    usleep($delay * 1000);
+                    usleep(min($delay, self::MAX_DELAY_MS) * 1000);
                 }
-                $delay = (int) round($delay * $attr->backoff);
+                // 指数退避 + 随机抖动，上限防溢出
+                $delay = min((int) round($delay * $attr->backoff + random_int(0, 100)), self::MAX_DELAY_MS);
             }
         }
     }

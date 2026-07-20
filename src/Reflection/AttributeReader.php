@@ -132,6 +132,7 @@ class AttributeReader
 
     /**
      * Parse PHP use statements from a file and return [shortName => FQCN] map.
+     * Supports PHP 7.0+ grouped imports: use Foo\{Bar, Baz as Qux};
      */
     private static function parseUseStatements(string $file): array
     {
@@ -151,80 +152,97 @@ class AttributeReader
                 continue;
             }
 
-            // Skip closure use (...) — T_USE inside a function body is a closure
-            // Simple heuristic: skip if preceded by ) or }
-            $skip = false;
-            for ($j = $i - 1; $j >= 0 && $j >= $i - 3; $j--) {
-                if (is_array($tokens[$j]) && in_array($tokens[$j][0], [T_DOUBLE_COLON, T_OBJECT_OPERATOR], true)) {
-                    continue 2; // Trait use, skip
-                }
-                if ($tokens[$j] === ')' || $tokens[$j] === '}') {
-                    $skip = true;
-                    break;
-                }
+            // Skip closure use (...) — 检查前一个非空白 token 是否为 )，表示 function() use($var)
+            $prev = $i - 1;
+            while ($prev >= 0 && is_array($tokens[$prev]) && $tokens[$prev][0] === T_WHITESPACE) {
+                $prev--;
             }
-            if ($skip) {
+            if ($prev >= 0 && $tokens[$prev] === ')') {
                 continue;
             }
 
-            $alias = null;
-            $fqcn = '';
-            $inFqcn = false;
+            $groupPrefix = null;
+            $fqcn       = '';
+            $alias      = null;
+            $aliasMode  = false;
+
             for ($j = $i + 1; $j < $count; $j++) {
+                // ---- single-char tokens ----
                 if (! is_array($tokens[$j])) {
-                    if ($tokens[$j] === ';') break;
+                    if ($tokens[$j] === ';') {
+                        $fqcn !== '' && self::addUseStatement($map, $fqcn, $alias, $groupPrefix);
+                        break;
+                    }
                     if ($tokens[$j] === ',') {
-                        $inFqcn = false;
-                        $alias = null;
+                        $fqcn !== '' && self::addUseStatement($map, $fqcn, $alias, $groupPrefix);
                         $fqcn = '';
+                        $alias = null;
+                        $aliasMode = false;
+                        continue;
+                    }
+                    if ($tokens[$j] === '{') {
+                        $groupPrefix = $fqcn;
+                        $fqcn = '';
+                        $alias = null;
+                        $aliasMode = false;
+                        continue;
+                    }
+                    if ($tokens[$j] === '}') {
+                        $fqcn !== '' && self::addUseStatement($map, $fqcn, $alias, $groupPrefix);
+                        $fqcn = '';
+                        $alias = null;
+                        $aliasMode = false;
                         continue;
                     }
                     continue;
                 }
 
-                if ($tokens[$j][0] === T_NAME_QUALIFIED || $tokens[$j][0] === T_NAME_FULLY_QUALIFIED) {
-                    $fqcn = ltrim($tokens[$j][1], '\\');
-                    $inFqcn = true;
-                    continue;
-                }
+                $tokenType = $tokens[$j][0];
+                $tokenVal  = $tokens[$j][1];
 
-                if ($tokens[$j][0] === T_STRING) {
-                    if (! $inFqcn) {
-                        $fqcn = $tokens[$j][1];
-                        $inFqcn = true;
+                // Qualified name (PHP 8.0+): T_NAME_QUALIFIED / T_NAME_FULLY_QUALIFIED
+                if ($tokenType === T_NAME_QUALIFIED || $tokenType === T_NAME_FULLY_QUALIFIED) {
+                    if ($aliasMode) {
+                        $alias = ltrim($tokenVal, '\\');
+                        $aliasMode = false;
+                    } else {
+                        $fqcn = ltrim($tokenVal, '\\');
                     }
                     continue;
                 }
 
-                if ($tokens[$j][0] === T_AS) {
-                    continue;
-                }
-
-                if ($tokens[$j][0] === T_NAME_FULLY_QUALIFIED || $tokens[$j][0] === T_STRING) {
-                    if ($fqcn !== '') {
-                        $alias = $tokens[$j][1];
+                // T_STRING: class name fragment, alias, or part of qualified name
+                if ($tokenType === T_STRING) {
+                    if ($aliasMode) {
+                        $alias = $tokenVal;
+                        $aliasMode = false;
+                    } elseif ($fqcn === '') {
+                        $fqcn = $tokenVal;
                     }
                     continue;
                 }
 
-                if ($tokens[$j] === ',' || $tokens[$j] === ';') {
-                    if ($fqcn !== '') {
-                        $shortName = $alias ?? substr($fqcn, (int) strrpos($fqcn, '\\') + 1);
-                        $map[$shortName] = $fqcn;
-                    }
-                    if ($tokens[$j] === ';') break;
-                    $fqcn = '';
-                    $alias = null;
-                    $inFqcn = false;
+                // T_AS: alias follows
+                if ($tokenType === T_AS) {
+                    $aliasMode = true;
+                    continue;
                 }
             }
 
+            // trailing fallback (shouldn't normally reach here)
             if ($fqcn !== '') {
-                $shortName = $alias ?? substr($fqcn, (int) strrpos($fqcn, '\\') + 1);
-                $map[$shortName] = $fqcn;
+                self::addUseStatement($map, $fqcn, $alias, $groupPrefix);
             }
         }
 
         return $map;
+    }
+
+    /** Add a parsed use statement to the map, handling group prefix */
+    private static function addUseStatement(array &$map, string $fqcn, ?string $alias, ?string $groupPrefix): void
+    {
+        $fullName = $groupPrefix !== null ? $groupPrefix . '\\' . $fqcn : $fqcn;
+        $shortName = $alias ?? substr($fullName, (int) strrpos($fullName, '\\') + 1);
+        $map[$shortName] = $fullName;
     }
 }

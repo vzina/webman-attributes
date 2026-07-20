@@ -74,11 +74,17 @@ class CacheableAspect implements AspectInterface
         if (! $attr->put) {
             $cached = $cache->get($cacheKey);
             if ($cached !== false && isset($cached['expired_time'], $cached['data'])) {
-                // 过期但获取到锁 → 协程异步刷新
+                // 过期但获取到锁 → 协程异步刷新；协程不可用时同步刷新
                 if ($now > $cached['expired_time'] &&
                     (! $redis || $redis->set($cacheKey . '.lock', '1', ['NX', 'EX' => $attr->lockSeconds]))
                 ) {
-                    Coroutine::create($refresh);
+                    try {
+                        Coroutine::create($refresh);
+                    } catch (\Throwable $e) {
+                        // 协程创建失败（环境不支持/资源不足），退化为同步刷新
+                        error_log('[CacheableAspect] Coroutine::create failed, falling back to sync refresh: ' . $e->getMessage());
+                        return $refresh();
+                    }
                 }
                 return $cached['data'];
             }

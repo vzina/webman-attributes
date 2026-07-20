@@ -1,8 +1,9 @@
 <?php
 /**
- * W3CTracer — 默认 W3C Trace Context 追踪器。
+ * W3CTracer — W3C Trace Context 默认追踪器。
  *
- * 生成 traceId/spanId，通过 support\Context 传播，输出到日志。
+ * 生成符合规范的 32-hex traceId / 16-hex spanId，
+ * 通过 support\Context 传播，支持 traceparent 头注入/提取。
  * 支持 Span::setAttribute() 写入自定义数据。
  */
 declare (strict_types=1);
@@ -17,14 +18,17 @@ class W3CTracer implements TracerContract
     private const CONTEXT_KEY = 'trace.ctx';
     private const ATTRS_KEY   = 'trace.attrs';
 
+    // ---- trace / span lifecycle ----
+
     public function trace(string $name, Closure $next): mixed
     {
         $parent = $this->currentContext();
 
         $ctx = new TraceContext(
-            traceId:      $parent?->traceId ?? $this->generateId(),
-            spanId:       $this->generateId(),
+            traceId:      $parent?->traceId ?? $this->generateTraceId(),
+            spanId:       $this->generateSpanId(),
             parentSpanId: $parent?->spanId,
+            isSampled:    $parent?->isSampled ?? true,
         );
 
         $this->storeContext($ctx);
@@ -59,6 +63,30 @@ class W3CTracer implements TracerContract
         }
     }
 
+    // ---- W3C traceparent 传播 ----
+
+    /** 从 traceparent header 应用上游追踪上下文 */
+    public function applyTraceparent(?string $traceparent): void
+    {
+        if ($traceparent === null || $traceparent === '') {
+            return;
+        }
+
+        $ctx = TraceContext::fromTraceparent($traceparent);
+        if ($ctx !== null) {
+            $this->storeContext($ctx);
+        }
+    }
+
+    /** 获取当前 span 的 traceparent header，用于向下游传播 */
+    public function getTraceparent(): ?string
+    {
+        $ctx = $this->currentContext();
+        return $ctx?->toTraceparent();
+    }
+
+    // ---- 自定义属性 ----
+
     public function setAttribute(string $key, mixed $value): void
     {
         $ctx = $this->currentContext();
@@ -73,6 +101,8 @@ class W3CTracer implements TracerContract
             error_log('[W3CTracer] setAttribute failed: ' . $e->getMessage());
         }
     }
+
+    // ---- internal ----
 
     private function initAttrs(string $spanId): void
     {
@@ -130,7 +160,6 @@ class W3CTracer implements TracerContract
             }
         }
 
-        // 日志
         if (class_exists(\support\Log::class)) {
             try {
                 \support\Log::channel('default')->info("[trace] {$name}", $spanData);
@@ -140,7 +169,14 @@ class W3CTracer implements TracerContract
         }
     }
 
-    private function generateId(): string
+    /** traceId: 16 字节 → 32 hex（W3C 规范） */
+    private function generateTraceId(): string
+    {
+        return bin2hex(random_bytes(16));
+    }
+
+    /** spanId: 8 字节 → 16 hex（W3C 规范） */
+    private function generateSpanId(): string
     {
         return bin2hex(random_bytes(8));
     }

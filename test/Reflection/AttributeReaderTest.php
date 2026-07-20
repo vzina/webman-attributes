@@ -131,4 +131,104 @@ class AttributeReaderTest extends TestCase
         $this->assertCount(3, $classConstants); // 三个 case
         $this->assertTrue($classConstants[0]->isEnumCase());
     }
+
+    // ==================== resolveClassName — grouped imports ====================
+
+    private function tmpFile(string $content): string
+    {
+        $file = sys_get_temp_dir() . '/vzina_attr_test_' . uniqid() . '.php';
+        file_put_contents($file, "<?php\n" . $content);
+        return $file;
+    }
+
+    public function testResolveGroupedImports(): void
+    {
+        $content = <<<'PHP'
+namespace App\GroupedTest;
+
+use Symfony\Component\Finder\{Finder, SplFileInfo as FileInfo};
+use Illuminate\Support\{Arr, Str};
+
+class TestClass {}
+PHP;
+        $file = $this->tmpFile($content);
+        require_once $file;
+
+        try {
+            $ref = new \ReflectionClass('App\GroupedTest\TestClass');
+            $this->assertEquals(
+                'Symfony\Component\Finder\Finder',
+                AttributeReader::resolveClassName('Finder', $ref)
+            );
+            $this->assertEquals(
+                'Symfony\Component\Finder\SplFileInfo',
+                AttributeReader::resolveClassName('FileInfo', $ref)
+            );
+            $this->assertEquals(
+                'Illuminate\Support\Arr',
+                AttributeReader::resolveClassName('Arr', $ref)
+            );
+            $this->assertEquals(
+                'Illuminate\Support\Str',
+                AttributeReader::resolveClassName('Str', $ref)
+            );
+        } finally {
+            @unlink($file);
+        }
+    }
+
+    public function testResolveMixedImports(): void
+    {
+        $content = <<<'PHP'
+namespace App\MixedImportTest;
+
+use Symfony\Component\Finder\Finder;
+use Symfony\Component\Finder\{SplFileInfo, Iterator\RecursiveDirectoryIterator as Rdi};
+
+class TestClass {}
+PHP;
+        $file = $this->tmpFile($content);
+        require_once $file;
+
+        try {
+            $ref = new \ReflectionClass('App\MixedImportTest\TestClass');
+            $this->assertEquals(
+                'Symfony\Component\Finder\Finder',
+                AttributeReader::resolveClassName('Finder', $ref)
+            );
+            $this->assertEquals(
+                'Symfony\Component\Finder\SplFileInfo',
+                AttributeReader::resolveClassName('SplFileInfo', $ref)
+            );
+            $this->assertEquals(
+                'Symfony\Component\Finder\Iterator\RecursiveDirectoryIterator',
+                AttributeReader::resolveClassName('Rdi', $ref)
+            );
+        } finally {
+            @unlink($file);
+        }
+    }
+
+    public function testResolveSingleGroupItem(): void
+    {
+        $content = <<<'PHP'
+namespace App\SingleGroupTest;
+
+use Vzina\Attributes\Attribute\{Trace};
+
+class TestClass {}
+PHP;
+        $file = $this->tmpFile($content);
+        require_once $file;
+
+        try {
+            $ref = new \ReflectionClass('App\SingleGroupTest\TestClass');
+            $this->assertEquals(
+                'Vzina\Attributes\Attribute\Trace',
+                AttributeReader::resolveClassName('Trace', $ref)
+            );
+        } finally {
+            @unlink($file);
+        }
+    }
 }

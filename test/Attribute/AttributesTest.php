@@ -832,6 +832,126 @@ class AttributesTest extends TestCase
         $this->assertTrue(true);
     }
 
+    // ==================== W3C Trace Context 合规 ====================
+
+    public function testTraceContextTraceIdIs32HexChars(): void
+    {
+        $tracer = new W3CTracer();
+        $ctx = null;
+
+        $tracer->trace('test', function () use ($tracer, &$ctx) {
+            $ctx = $tracer->currentContext();
+        });
+
+        $this->assertNotNull($ctx);
+        $this->assertEquals(32, strlen($ctx->traceId), 'W3C traceId must be 32 hex chars (16 bytes)');
+        $this->assertMatchesRegularExpression('/^[a-f0-9]{32}$/', $ctx->traceId);
+    }
+
+    public function testTraceContextSpanIdIs16HexChars(): void
+    {
+        $tracer = new W3CTracer();
+        $ctx = null;
+
+        $tracer->trace('test', function () use ($tracer, &$ctx) {
+            $ctx = $tracer->currentContext();
+        });
+
+        $this->assertNotNull($ctx);
+        $this->assertEquals(16, strlen($ctx->spanId), 'W3C spanId must be 16 hex chars (8 bytes)');
+        $this->assertMatchesRegularExpression('/^[a-f0-9]{16}$/', $ctx->spanId);
+    }
+
+    public function testTraceparentRoundtrip(): void
+    {
+        $ctx = new TraceContext(
+            traceId:  '0af7651916cd43dd8448eb211c80319c',
+            spanId:   'b7ad6b7169203331',
+            isSampled: true,
+        );
+
+        $header = $ctx->toTraceparent();
+        $this->assertEquals('00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01', $header);
+
+        $parsed = TraceContext::fromTraceparent($header);
+        $this->assertNotNull($parsed);
+        $this->assertEquals($ctx->traceId, $parsed->traceId);
+        $this->assertEquals($ctx->spanId, $parsed->spanId);
+        $this->assertTrue($parsed->isSampled);
+    }
+
+    public function testTraceparentNotSampled(): void
+    {
+        $header = '00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-00';
+        $ctx = TraceContext::fromTraceparent($header);
+
+        $this->assertNotNull($ctx);
+        $this->assertFalse($ctx->isSampled);
+    }
+
+    public function testTraceparentRejectsInvalid(): void
+    {
+        // 全零 traceId
+        $this->assertNull(TraceContext::fromTraceparent(
+            '00-00000000000000000000000000000000-b7ad6b7169203331-01'
+        ));
+        // 全零 spanId
+        $this->assertNull(TraceContext::fromTraceparent(
+            '00-0af7651916cd43dd8448eb211c80319c-0000000000000000-01'
+        ));
+        // 长度错误
+        $this->assertNull(TraceContext::fromTraceparent(
+            '00-short-b7ad6b7169203331-01'
+        ));
+        // 非 00 版本
+        $this->assertNull(TraceContext::fromTraceparent(
+            'ff-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01'
+        ));
+    }
+
+    public function testW3CTracerApplyTraceparentPropagatesContext(): void
+    {
+        $tracer = new W3CTracer();
+        $tracer->applyTraceparent('00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01');
+
+        $ctx = $tracer->currentContext();
+        $this->assertNotNull($ctx);
+        $this->assertEquals('4bf92f3577b34da6a3ce929d0e0e4736', $ctx->traceId);
+        $this->assertEquals('00f067aa0ba902b7', $ctx->spanId);
+        $this->assertTrue($ctx->isSampled);
+    }
+
+    public function testW3CTracerNestedSpansInheritTraceId(): void
+    {
+        $tracer = new W3CTracer();
+        $tracer->applyTraceparent('00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01');
+
+        $inner = null;
+        $tracer->trace('child', function () use ($tracer, &$inner) {
+            $inner = $tracer->currentContext();
+        });
+
+        $this->assertNotNull($inner);
+        $this->assertEquals('4bf92f3577b34da6a3ce929d0e0e4736', $inner->traceId);
+        $this->assertEquals('00f067aa0ba902b7', $inner->parentSpanId);
+        $this->assertNotEquals('00f067aa0ba902b7', $inner->spanId);
+    }
+
+    public function testW3CTracerGetTraceparent(): void
+    {
+        $tracer = new W3CTracer();
+        $header = null;
+
+        $tracer->trace('test', function () use ($tracer, &$header) {
+            $header = $tracer->getTraceparent();
+        });
+
+        $this->assertNotNull($header);
+        $this->assertStringStartsWith('00-', $header);
+        // 格式: 00-{32}-{16}-01
+        $this->assertMatchesRegularExpression('/^00-[a-f0-9]{32}-[a-f0-9]{16}-01$/', $header);
+    }
+
     // ==================== Command ====================
 
     public function testCommandDefaultValues(): void

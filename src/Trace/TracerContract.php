@@ -20,4 +20,10 @@ interface TracerContract
 
     /** 向当前 span 写入自定义属性 */
     public function setAttribute(string $key, mixed $value): void;
+
+    /** 从 traceparent header 应用上游追踪上下文（W3C Trace Context） */
+    public function applyTraceparent(?string $traceparent): void;
+
+    /** 获取当前 span 的 traceparent header 值，用于向下游传播 */
+    public function getTraceparent(): ?string;
 }

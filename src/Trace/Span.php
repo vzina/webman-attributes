@@ -6,6 +6,10 @@
  *
  *   Span::setAttribute('order_id', $order->id);
  *   Span::setAttribute('amount', 99.9);
+ *
+ * 跨进程传播（从上游 traceparent header 恢复）：
+ *
+ *   Span::applyTraceparent($request->header('traceparent'));
  */
 declare (strict_types=1);
 
@@ -23,6 +27,22 @@ class Span
         if ($tracer !== null) {
             $tracer->setAttribute($key, $value);
         }
+    }
+
+    /** 从 W3C traceparent header 应用上游追踪上下文 */
+    public static function applyTraceparent(?string $traceparent): void
+    {
+        $tracer = self::resolve();
+        if ($tracer !== null) {
+            $tracer->applyTraceparent($traceparent);
+        }
+    }
+
+    /** 获取当前 span 的 traceparent header，用于向下游传播 */
+    public static function getTraceparent(): ?string
+    {
+        $tracer = self::resolve();
+        return $tracer?->getTraceparent();
     }
 
     private static function resolve(): ?TracerContract
