@@ -9,6 +9,7 @@ declare (strict_types=1);
 
 namespace Vzina\Attributes\Attribute;
 
+use support\Container;
 use Vzina\Attributes\Ast\SplPriorityQueue;
 use Vzina\Attributes\Collector\AttributeCollector;
 use Vzina\Attributes\Reflection\ServiceInjector;
@@ -22,22 +23,39 @@ class DependHandler implements Bootstrap
      */
     public static function start(?Worker $worker)
     {
-        $depends = AttributeCollector::getClassesByAttribute(Depend::class);
-        if (empty($depends)) {
-            return;
-        }
-
         $queue = new SplPriorityQueue();
-        foreach ($depends as $class => $attribute) {
-            /** @var Depend $attribute */
-            $queue->insert([
-                'id'        => $attribute->id ?: $class,
-                'class'     => $class,
-                'params'    => $attribute->params,
-                'singleton' => $attribute->singleton,
-            ], $attribute->priority);
+
+        // 静态配置：dependence.php → 数组顺序即优先级（先定义 > 后定义）
+        if (Container::instance() instanceof \Webman\Container) {
+            $dependence = (array) config('dependence');
+            if ($dependence) {
+                $count = count($dependence);
+                foreach ($dependence as $id => $dependency) {
+                    $queue->insert([
+                        'id'        => $id,
+                        'class'     => $dependency,
+                        'params'    => [],
+                        'singleton' => true,
+                    ], $count--);
+                }
+            }
         }
 
+        // 注解：#[Depend] → 显式 priority
+        $depends = AttributeCollector::getClassesByAttribute(Depend::class);
+        if ($depends) {
+            foreach ($depends as $class => $attribute) {
+                /** @var Depend $attribute */
+                $queue->insert([
+                    'id'        => $attribute->id ?? $class,
+                    'class'     => $class,
+                    'params'    => $attribute->params,
+                    'singleton' => $attribute->singleton,
+                ], $attribute->priority);
+            }
+        }
+
+        // 同名取高优先（先 extract 者先写入 → 高优先保留）
         $definitions = [];
         while (! $queue->isEmpty()) {
             $item = $queue->extract();

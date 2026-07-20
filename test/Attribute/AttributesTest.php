@@ -180,7 +180,7 @@ class AttributesTest extends TestCase
         $this->assertNull($depend->id);
         $this->assertEquals(0, $depend->priority);
         $this->assertEquals([], $depend->params);
-        $this->assertFalse($depend->singleton);
+        $this->assertTrue($depend->singleton);
     }
 
     public function testDependWithParams(): void

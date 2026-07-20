@@ -19,7 +19,7 @@ class Depend extends AbstractAttribute
         public ?string $id = null,
         public int $priority = 0,
         public array $params = [],
-        public bool $singleton = false,
+        public bool $singleton = true,
     ) {
     }
 }
