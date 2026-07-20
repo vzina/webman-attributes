@@ -20,6 +20,9 @@ class PcntlHandler implements ScanHandlerInterface
     /** 防止嵌套 fork：fork 后子进程标记为 true，再次 scan() 直接返回 false */
     private static bool $forked = false;
 
+    /** 子进程扫描超时（秒） */
+    private const FORK_TIMEOUT = 30;
+
     public function scan(): Scanned
     {
         if (self::$forked) {
@@ -31,8 +34,25 @@ class PcntlHandler implements ScanHandlerInterface
             throw new RuntimeException('The process fork failed');
         }
         if ($pid) {
-            pcntl_wait($status);
-            return new Scanned(true);
+            // 父进程：轮询等待子进程完成，超时则杀子
+            $elapsed = 0;
+            while ($elapsed < self::FORK_TIMEOUT) {
+                $res = pcntl_waitpid($pid, $status, WNOHANG);
+                if ($res === $pid) {
+                    return new Scanned(true);
+                }
+                if ($res === -1) {
+                    break;
+                }
+                usleep(100000); // 100ms
+                $elapsed += 0.1;
+            }
+            // 超时 → 杀子进程
+            posix_kill($pid, SIGKILL);
+            pcntl_waitpid($pid, $status);
+            throw new RuntimeException(
+                'Child scan process timed out after ' . self::FORK_TIMEOUT . ' seconds'
+            );
         }
 
         self::$forked = true;

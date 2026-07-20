@@ -50,7 +50,11 @@ abstract class MetadataCollector implements MetadataCollectorInterface
 
     public static function deserialize(string $metadata): bool
     {
-        static::$container = unserialize($metadata, ['allowed_classes' => []]);
+        $data = unserialize($metadata, ['allowed_classes' => []]);
+        if (! is_array($data)) {
+            return false;
+        }
+        static::$container = $data;
         return true;
     }
 
@@ -75,7 +79,7 @@ abstract class MetadataCollector implements MetadataCollectorInterface
 
     /**
      * Load container from a PHP cache file.
-     * file_get_contents + eval 替代 include，彻底绕过 OPcache 文件缓存。
+     * 闭包 include 替代 eval，安全读取缓存的同时绕过 OPcache 文件缓存。
      * @return array The loaded data (also stored in static::$container).
      */
     public static function loadFromFile(string $filePath): array
@@ -85,13 +89,12 @@ abstract class MetadataCollector implements MetadataCollectorInterface
         }
         clearstatcache(true, $filePath);
 
-        $content = file_get_contents($filePath);
-        if ($content === false) {
-            return [];
-        }
+        $data = (static function () use ($filePath) {
+            return include $filePath;
+        })();
 
-        if (preg_match('/\breturn\s+(.+);\s*$/s', $content, $m)) {
-            return static::$container = eval("return {$m[1]};");
+        if (is_array($data)) {
+            return static::$container = $data;
         }
         return [];
     }

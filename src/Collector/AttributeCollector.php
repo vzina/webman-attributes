@@ -53,8 +53,8 @@ class AttributeCollector extends MetadataCollector
         $result = [];
         foreach (static::$container as $class => $metadata) {
             foreach ($metadata['_m'] ?? [] as $method => $_metadata) {
-                if ($value = $_metadata[$attribute] ?? null) {
-                    $result[] = ['class' => $class, 'method' => $method, 'attribute' => $value];
+                if (array_key_exists($attribute, $_metadata)) {
+                    $result[] = ['class' => $class, 'method' => $method, 'attribute' => $_metadata[$attribute]];
                 }
             }
         }
@@ -66,8 +66,8 @@ class AttributeCollector extends MetadataCollector
         $properties = [];
         foreach (static::$container as $class => $metadata) {
             foreach ($metadata['_p'] ?? [] as $property => $_metadata) {
-                if ($value = $_metadata[$attribute] ?? null) {
-                    $properties[] = ['class' => $class, 'property' => $property, 'attribute' => $value];
+                if (array_key_exists($attribute, $_metadata)) {
+                    $properties[] = ['class' => $class, 'property' => $property, 'attribute' => $_metadata[$attribute]];
                 }
             }
         }

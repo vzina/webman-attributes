@@ -75,6 +75,9 @@ class ScannerIntegrationTest extends TestCase
                 AspectCollector::class,
                 ConstantsCollector::class,
             ],
+            'ast_proxy_loaders' => [
+                \Vzina\Attributes\Ast\AspectProxyLoader::class,
+            ],
         ], $overrides));
     }
 

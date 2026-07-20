@@ -136,7 +136,11 @@ class AttributeReader
     private static function parseUseStatements(string $file): array
     {
         $map = [];
-        $tokens = @token_get_all((string) file_get_contents($file));
+        $source = file_get_contents($file);
+        if ($source === false) {
+            return $map;
+        }
+        $tokens = token_get_all($source);
         if (! is_array($tokens)) {
             return $map;
         }

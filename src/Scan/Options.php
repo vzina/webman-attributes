@@ -9,6 +9,9 @@ declare (strict_types=1);
 
 namespace Vzina\Attributes\Scan;
 
+use RuntimeException;
+use Vzina\Attributes\Scan\ScanHandlerInterface;
+
 class Options
 {
     public function __construct(protected array $options) {}
@@ -31,7 +34,13 @@ class Options
         if ($class === null) {
             $class = PcntlHandler::class;
         }
-        return new $class;
+        $handler = new $class;
+        if (! $handler instanceof ScanHandlerInterface) {
+            throw new RuntimeException(
+                "Scan handler {$class} must implement " . ScanHandlerInterface::class
+            );
+        }
+        return $handler;
     }
 
     /** 缓存根目录，不存在则自动创建 */
@@ -55,7 +64,9 @@ class Options
     {
         $dirs = [];
         foreach ((array) ($this->options['scan_path'] ?? []) as $dir) {
-            file_exists($dir) and $dirs[] = $dir;
+            if (is_dir($dir)) {
+                $dirs[] = $dir;
+            }
         }
         return $dirs;
     }

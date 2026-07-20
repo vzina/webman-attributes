@@ -33,7 +33,9 @@ class AspectProxyLoader implements ProxyLoaderInterface
             if (! file_exists($proxyFile) ||
                 (isset($classMap[$className]) && filemtime($proxyFile) < filemtime($classMap[$className]))
             ) {
-                file_put_contents($proxyFile, $this->generate($astParser, $className), LOCK_EX);
+                $tmpFile = $proxyFile . '.' . getmypid() . '.tmp';
+                file_put_contents($tmpFile, $this->generate($astParser, $className), LOCK_EX);
+                rename($tmpFile, $proxyFile);
             }
             $classMap[$className] = $proxyFile;
         }

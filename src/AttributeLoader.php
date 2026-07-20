@@ -75,8 +75,12 @@ class AttributeLoader
                         AstVisitorManager::insert($visitor);
                     }
                 }
-            } catch (\Throwable) {
-                // 跳过无法加载的 visitor
+            } catch (\Throwable $e) {
+                error_log(sprintf(
+                    'AttributeLoader: Failed to register AST visitor [%s]: %s',
+                    $visitor,
+                    $e->getMessage()
+                ));
             }
         }
 
@@ -86,8 +90,12 @@ class AttributeLoader
                 if (class_exists($handler) && ($instance = new $handler) instanceof PropertyHandlerInterface) {
                     PropertyManagerCollector::register($instance->getAttribute(), $instance);
                 }
-            } catch (\Throwable) {
-                // 跳过初始化失败的 handler
+            } catch (\Throwable $e) {
+                error_log(sprintf(
+                    'AttributeLoader: Failed to register property handler [%s]: %s',
+                    $handler,
+                    $e->getMessage()
+                ));
             }
         }
 

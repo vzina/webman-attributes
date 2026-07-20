@@ -44,6 +44,13 @@ use Vzina\Attributes\Reflection\ReflectionManager;
 
 class AstParser
 {
+    /** PHP 内建类型，类型名 → 内置标记 */
+    private const BUILTIN_TYPES = [
+        'int', 'float', 'bool', 'string', 'void', 'never', 'mixed',
+        'null', 'true', 'false', 'array', 'object', 'callable', 'iterable',
+        'self', 'static', 'parent',
+    ];
+
     protected Parser $parser;
     protected PrettyPrinterAbstract $printer;
 

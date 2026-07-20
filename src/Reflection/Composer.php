@@ -35,7 +35,10 @@ class Composer
     public static function getCodeByClassName(string $className): string
     {
         $file = self::getPathByClassName($className);
-        return $file ? file_get_contents($file) : '';
+        if ($file === '' || ! is_file($file)) {
+            return '';
+        }
+        return (string) file_get_contents($file);
     }
 
     public static function getPathByClassName(string $className): string

@@ -59,6 +59,7 @@ abstract class AbstractAttribute implements AttributeInterface
             if ($ref->hasProperty($key)) {
                 $prop = $ref->getProperty($key);
                 if (! $prop->isStatic()) {
+                    $prop->setAccessible(true);
                     $prop->setValue($instance, $value);
                 }
             }

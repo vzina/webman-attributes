@@ -60,8 +60,8 @@ class Scanner
 
         // 子进程
         try {
-            $this->scanClasses($paths, $dir, $cacheFile, $collectors, $cachedMap, $threshold);
-            return []; // PcntlHandler 在 finally → exit(0) 截断
+            return $this->scanClasses($paths, $dir, $cacheFile, $collectors, $cachedMap, $threshold);
+            // PcntlHandler 在 finally → exit(0) 截断
         } finally {
             $handler->finish();
         }
@@ -129,7 +129,7 @@ class Scanner
         $this->filesystem->put($cacheFile, '<?php return ' . time() . ";\n", true);
     }
 
-    /** 读取 PHP 缓存文件：file_get_contents + eval，绕过 OPcache 文件缓存 */
+    /** 使用闭包 include 读取 PHP 缓存文件，绕过 OPcache 文件缓存 */
     private function readEvalFile(string $path): array
     {
         if (! file_exists($path)) {
@@ -137,13 +137,11 @@ class Scanner
         }
 
         clearstatcache(true, $path);
-        $content = file_get_contents($path);
+        $data = (static function () use ($path) {
+            return include $path;
+        })();
 
-        if ($content !== false && preg_match('/\breturn\s+(.+);\s*$/s', $content, $m)) {
-            return eval("return {$m[1]};");
-        }
-
-        return [];
+        return is_array($data) ? $data : [];
     }
 
     // ===================================================================
@@ -157,7 +155,7 @@ class Scanner
         array $collectors,
         array $cachedMap,
         int $threshold,
-    ): void {
+    ): array {
         $this->preloadCollectors($dir, $cacheFile, $collectors);
 
         $classPaths = AstParser::getInstance()->getAllClassesByPath($paths);
@@ -180,6 +178,8 @@ class Scanner
         }
 
         $this->writeCache($dir, $cacheFile, $collectors, $map);
+
+        return $map;
     }
 
     /** 预加载已有缓存作为基线，后续逐类清除后再重新收集 */
@@ -204,7 +204,7 @@ class Scanner
     private function clearRemoved(array $collectors, array $current): void
     {
         $file = $this->option->cachePath() . '/classes.cache.php';
-        $old  = $this->filesystem->exists($file) ? (array) include $file : [];
+        $old  = $this->filesystem->exists($file) ? $this->readEvalFile($file) : [];
 
         $this->filesystem->put($file, "<?php\nreturn " . var_export($current, true) . ";\n", true);
 

@@ -53,7 +53,8 @@ class W3CTracer implements TracerContract
         }
         try {
             return \support\Context::get(self::CONTEXT_KEY);
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            error_log('[W3CTracer] Context::get failed: ' . $e->getMessage());
             return null;
         }
     }
@@ -68,7 +69,9 @@ class W3CTracer implements TracerContract
             $attrs = \support\Context::get(self::ATTRS_KEY, []);
             $attrs[$ctx->spanId][$key] = $value;
             \support\Context::set(self::ATTRS_KEY, $attrs);
-        } catch (\Throwable) {}
+        } catch (\Throwable $e) {
+            error_log('[W3CTracer] setAttribute failed: ' . $e->getMessage());
+        }
     }
 
     private function initAttrs(string $spanId): void
@@ -78,47 +81,63 @@ class W3CTracer implements TracerContract
                 $attrs = \support\Context::get(self::ATTRS_KEY, []);
                 $attrs[$spanId] = [];
                 \support\Context::set(self::ATTRS_KEY, $attrs);
-            } catch (\Throwable) {}
+            } catch (\Throwable $e) {
+                error_log('[W3CTracer] initAttrs failed: ' . $e->getMessage());
+            }
         }
     }
 
     private function storeContext(TraceContext $ctx): void
     {
         if (class_exists(\support\Context::class)) {
-            try { \support\Context::set(self::CONTEXT_KEY, $ctx); } catch (\Throwable) {}
+            try {
+                \support\Context::set(self::CONTEXT_KEY, $ctx);
+            } catch (\Throwable $e) {
+                error_log('[W3CTracer] storeContext failed: ' . $e->getMessage());
+            }
         }
     }
 
     private function restoreContext(?TraceContext $parent): void
     {
         if (class_exists(\support\Context::class)) {
-            try { \support\Context::set(self::CONTEXT_KEY, $parent); } catch (\Throwable) {}
+            try {
+                \support\Context::set(self::CONTEXT_KEY, $parent);
+            } catch (\Throwable $e) {
+                error_log('[W3CTracer] restoreContext failed: ' . $e->getMessage());
+            }
         }
     }
 
     private function log(TraceContext $ctx, string $name, string $status, float $ms, ?string $error = null): void
     {
-        if (! class_exists(\support\Log::class)) {
-            return;
+        $spanData = [
+            'trace_id'    => $ctx->traceId,
+            'span_id'     => $ctx->spanId,
+            'parent_id'   => $ctx->parentSpanId,
+            'name'        => $name,
+            'status'      => $status,
+            'duration_ms' => $ms,
+            'start'       => microtime(true) - $ms / 1000,
+        ];
+        if ($error !== null) {
+            $spanData['error'] = $error;
         }
-        try {
-            $data = [
-                'trace_id'    => $ctx->traceId,
-                'span_id'     => $ctx->spanId,
-                'parent_id'   => $ctx->parentSpanId,
-                'span'        => $name,
-                'status'      => $status,
-                'duration_ms' => $ms,
-            ];
-            if ($error !== null) {
-                $data['error'] = $error;
-            }
+        if (class_exists(\support\Context::class)) {
             $attrs = \support\Context::get(self::ATTRS_KEY, [])[$ctx->spanId] ?? [];
             if ($attrs) {
-                $data['attrs'] = $attrs;
+                $spanData['attrs'] = $attrs;
             }
-            \support\Log::channel('default')->info("[trace] {$name}", $data);
-        } catch (\Throwable) {}
+        }
+
+        // 日志
+        if (class_exists(\support\Log::class)) {
+            try {
+                \support\Log::channel('default')->info("[trace] {$name}", $spanData);
+            } catch (\Throwable $e) {
+                error_log('[W3CTracer] log failed: ' . $e->getMessage());
+            }
+        }
     }
 
     private function generateId(): string
