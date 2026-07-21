@@ -7,6 +7,7 @@
  * @param array   $rules        校验规则，键为字段名，值为规则字符串（如 'required|min:3'）
  * @param array   $messages     自定义错误消息，键为 "字段.规则"
  * @param ?string $requestParam Request 参数名，null 时自动发现方法中第一个 Request 类型参数
+ * @param ?string $dto          spatie/laravel-data DTO 类名，自动从请求数据实例化并替换方法参数
  */
 declare (strict_types=1);
 
@@ -22,6 +23,7 @@ class Validate extends AbstractAttribute
         public array $rules = [],
         public array $messages = [],
         public ?string $requestParam = null,
+        public ?string $dto = null,
     ) {
     }
 }

@@ -4,7 +4,8 @@
  *
  * 为方法调用创建追踪 span，记录耗时和状态。W3C Trace Context 标准。
  *
- * @param ?string $spanName span 名称，null 时自动 ClassName::methodName
+ * @param ?string $spanName   span 名称，null 时自动 ClassName::methodName
+ * @param float   $sampleRate 采样率 0.0-1.0，默认 1.0（全部采样），设 0.1 则 10% 采样
  */
 declare (strict_types=1);
 
@@ -18,6 +19,7 @@ class Trace extends AbstractAttribute
 {
     public function __construct(
         public ?string $spanName = null,
+        public float $sampleRate = 1.0,
     ) {
     }
 }

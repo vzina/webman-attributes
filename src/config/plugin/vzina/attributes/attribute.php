@@ -14,4 +14,9 @@ return [
     'ignores' => [],
     'collectors' => [],
     'aspects' => [],
+
+    // 调试：关闭后抑制 error_log 输出
+    'debug' => [
+        'log_errors' => true,  // 是否输出校验/代理/追踪异常日志
+    ],
 ];

@@ -3,9 +3,13 @@
  * Inject — 依赖注入注解。
  *
  * 在属性或构造器参数上标记需要从容器中注入的服务。
- * 属性：通过 AstPropertyVisitor 在构造时注入。
- * 构造器参数：通过 AstPropertyVisitor 在构造器体内调用 Container::get() 解析。
+ * 属性类型自动解析为服务类名，接口类型自动查找容器绑定实现。
  * 支持懒加载代理模式，生成代理类延迟第一次访问时才解析。
+ *
+ *   #[Inject]                    private UserService $service;       // 类名自动解析
+ *   #[Inject]                    private LoggerInterface $logger;    // 接口自动绑定
+ *   #[Inject(lazy: true)]        private HeavyService $service;      // 懒加载
+ *   #[Inject(required: false)]   private ?Cache $cache = null;      // 可选注入
  *
  * @param ?string $value   服务类名，默认从属性/参数类型自动解析
  * @param bool    $required 未找到服务时是否抛异常

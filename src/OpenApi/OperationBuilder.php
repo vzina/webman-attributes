@@ -105,6 +105,36 @@ class OperationBuilder
         return $this;
     }
 
+    /** 添加 #[Header] 注解的请求头参数 */
+    public function headers(array $headerAttrs): self
+    {
+        foreach ($headerAttrs as $h) {
+            if ($h instanceof \Vzina\Attributes\Attribute\Route\Header) {
+                $this->parameters[] = [
+                    'name'        => $h->name,
+                    'in'          => 'header',
+                    'required'    => $h->required,
+                    'description' => $h->description,
+                    'schema'      => ['type' => 'string'],
+                ];
+            }
+        }
+        return $this;
+    }
+
+    /** 添加 #[ApiResponse] 注解的自定义响应 */
+    public function responseDocs(array $responseAttrs): self
+    {
+        foreach ($responseAttrs as $r) {
+            if ($r instanceof \Vzina\Attributes\Attribute\Route\ApiResponse) {
+                $this->responses[(string) $r->statusCode] = [
+                    'description' => $r->description,
+                ];
+            }
+        }
+        return $this;
+    }
+
     /** 追加额外参数（如 Resource 的 {id} path 参数） */
     public function prependParameters(array $params): self
     {

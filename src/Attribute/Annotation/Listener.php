@@ -21,6 +21,7 @@ class Listener extends AbstractAttribute
     public function __construct(
         public string|array|null $event = null,
         public int|null $priority = null,
+        public ?string $when = null,
     ) {
     }
 

@@ -1149,6 +1149,79 @@ class AttributesTest extends TestCase
         $this->assertEquals('Export data', $restored->description);
     }
 
+    // ==================== Trace SampleRate ====================
+
+    public function testTraceSampleRateDefaultIsFull(): void
+    {
+        $t = new Trace();
+        $this->assertEquals(1.0, $t->sampleRate);
+    }
+
+    public function testTraceSampleRateCustom(): void
+    {
+        $t = new Trace(sampleRate: 0.1);
+        $this->assertEquals(0.1, $t->sampleRate);
+    }
+
+    // ==================== Cacheable cacheNull ====================
+
+    public function testCacheableCacheNullDefault(): void
+    {
+        $c = new Cacheable();
+        $this->assertFalse($c->cacheNull);
+    }
+
+    public function testCacheableCacheNullEnabled(): void
+    {
+        $c = new Cacheable(cacheNull: true);
+        $this->assertTrue($c->cacheNull);
+    }
+
+    // ==================== Listener when clause ====================
+
+    public function testListenerWhenClause(): void
+    {
+        $l = new Listener(event: 'order.updated', when: 'status=paid');
+        $this->assertEquals('order.updated', $l->event);
+        $this->assertEquals('status=paid', $l->when);
+    }
+
+    public function testListenerWhenClauseDefault(): void
+    {
+        $l = new Listener(event: 'user.registered');
+        $this->assertNull($l->when);
+    }
+
+    // ==================== Crontab distributed lock ====================
+
+    public function testCrontabLockDefaults(): void
+    {
+        $c = new Crontab(rule: '* * * * *');
+        $this->assertEquals(0, $c->lockSeconds);
+        $this->assertEquals('default', $c->lockConnection);
+    }
+
+    public function testCrontabLockCustomConnection(): void
+    {
+        $c = new Crontab(rule: '*/5 * * * *', lockSeconds: 30, lockConnection: 'cache');
+        $this->assertEquals(30, $c->lockSeconds);
+        $this->assertEquals('cache', $c->lockConnection);
+    }
+
+    // ==================== Validate DTO ====================
+
+    public function testValidateDtoDefault(): void
+    {
+        $v = new Validate(rules: ['name' => 'required']);
+        $this->assertNull($v->dto);
+    }
+
+    public function testValidateDtoClassName(): void
+    {
+        $v = new Validate(dto: \Spatie\LaravelData\Data::class);
+        $this->assertEquals(\Spatie\LaravelData\Data::class, $v->dto);
+    }
+
     // ==================== helpers ====================
 
     /** 创建最小 ProceedingJoinPoint，pipe 支持多次调用（用于重试测试） */

@@ -15,6 +15,7 @@
  * @param bool    $evict        清除模式：删缓存后执行方法
  * @param bool    $put          仅写入模式：跳过缓存读取直接执行并缓存
  * @param array   $tags         缓存标签组，用于批量清除关联缓存（需 tag 驱动的 cache store）
+ * @param bool    $cacheNull    缓存 null 结果，防缓存穿透，默认关闭
  */
 declare (strict_types=1);
 
@@ -38,6 +39,7 @@ class Cacheable extends AbstractAttribute
         public bool $evict = false,
         public bool $put = false,
         public array $tags = [],
+        public bool $cacheNull = false,
     ) {
     }
 }

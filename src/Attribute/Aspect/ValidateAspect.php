@@ -2,7 +2,12 @@
 /**
  * ValidateAspect — 请求参数校验切面。
  *
- * 拦截 @Validate 方法：从方法参数中自动发现 Request，调用校验器，通过则继续，失败则抛 ValidateException。
+ * 拦截 @Validate 方法：
+ *   1. 自动发现 Request → 提取请求数据
+ *   2. 若指定 dto → spatie/laravel-data 实例化 + 自动校验
+ *   3. 若指定 rules → ValidatorContract 校验
+ *   4. 两者可并存（DTO 类型转换 + 补充规则校验）
+ *
  * 校验器解析优先级：容器 ValidatorContract 绑定 → LaravelValidator 默认实现。
  */
 declare (strict_types=1);
@@ -16,46 +21,52 @@ use Vzina\Attributes\Attribute\Annotation\Validate;
 use Vzina\Attributes\Attribute\Contract\ValidatorContract;
 use Vzina\Attributes\Attribute\Default\LaravelValidator;
 use Vzina\Attributes\Attribute\AspectInterface;
+use Vzina\Attributes\Attribute\DebugLog;
 
 class ValidateAspect implements AspectInterface
 {
+    use DebugLog;
+
     public array $attributes = [Validate::class];
 
     public function process(ProceedingJoinPoint $point)
     {
         /** @var Validate|null $attr */
         $attr = $point->getAnnotationMetadata()->method[Validate::class] ?? null;
-        if (! $attr || empty($attr->rules)) {
+        if (! $attr) {
+            return $point->process();
+        }
+
+        // 无 dto 且无 rules → 透传
+        if ($attr->dto === null && empty($attr->rules)) {
             return $point->process();
         }
 
         $request = $this->findRequest($point, $attr->requestParam);
         if (! $request) {
             if ($attr->requestParam !== null) {
-                // 用户显式指定了参数名但找不到 → 配置错误
                 throw new InvalidArgumentException(sprintf(
-                    'ValidateAspect: Request parameter "%s" not found in arguments of %s::%s().',
-                    $attr->requestParam,
-                    $point->className,
-                    $point->methodName,
+                    'ValidateAspect: Request parameter "%s" not found in %s::%s().',
+                    $attr->requestParam, $point->className, $point->methodName
                 ));
             }
-            // 自动发现也没有 Request → 记录警告后跳过，避免静默绕过校验
-            error_log(sprintf(
+            $this->log(sprintf(
                 'ValidateAspect: No Request object found for %s::%s(), validation skipped.',
-                $point->className,
-                $point->methodName,
+                $point->className, $point->methodName
             ));
             return $point->process();
         }
 
         $data = method_exists($request, 'all') ? $request->all() : [];
-        // 逐方法 callable 覆盖 > 容器 ValidatorContract > LaravelValidator
-        $validator = $this->resolveValidator();
-        $errors    = $validator($data, $attr->rules, $attr->messages);
 
-        if (! empty($errors)) {
-            throw new ValidateException($errors);
+        // 1. DTO 实例化 + 校验（spatie/laravel-data 内置规则优先）
+        if ($attr->dto !== null && $this->isDtoAvailable()) {
+            $data = $this->resolveDto($point, $attr->dto, $data);
+        }
+
+        // 2. 显式 rules 校验（可配合 DTO 做补充校验）
+        if (! empty($attr->rules)) {
+            $this->validateRules($data, $attr->rules, $attr->messages);
         }
 
         return $point->process();
@@ -71,11 +82,9 @@ class ValidateAspect implements AspectInterface
         try {
             foreach ($point->getReflectMethod()->getParameters() as $param) {
                 $type = $param->getType();
-                if ($type instanceof \ReflectionNamedType && ! $type->isBuiltin()) {
-                    $typeName = $type->getName();
-                    if ($this->isRequestType($typeName)) {
-                        return $point->arguments['keys'][$param->getName()] ?? null;
-                    }
+                if ($type instanceof \ReflectionNamedType && !$type->isBuiltin()
+                    && $this->isRequestType($type->getName())) {
+                    return $point->arguments['keys'][$param->getName()] ?? null;
                 }
             }
         } catch (\ReflectionException) {
@@ -85,14 +94,10 @@ class ValidateAspect implements AspectInterface
         return null;
     }
 
-    /** 判断类型是否为 webman Request（含子类） */
     private function isRequestType(string $typeName): bool
     {
-        if (in_array($typeName, ['support\Request', 'Webman\Http\Request'], true)) {
-            return true;
-        }
-        // 支持 Request 子类（如 App\Http\Request）
-        return class_exists($typeName) && is_a($typeName, 'support\Request', true);
+        return in_array($typeName, ['support\Request', 'Webman\Http\Request'], true)
+            || (class_exists($typeName) && is_a($typeName, 'support\Request', true));
     }
 
     /** 解析校验器：容器 ValidatorContract → LaravelValidator */
@@ -102,7 +107,7 @@ class ValidateAspect implements AspectInterface
             try {
                 $validator = \support\Container::get(ValidatorContract::class);
             } catch (\Throwable $e) {
-                error_log('[ValidateAspect] Container::get(ValidatorContract) failed: ' . $e->getMessage());
+                $this->log('[ValidateAspect] Container::get(ValidatorContract) failed: ' . $e->getMessage());
                 $validator = null;
             }
             if ($validator instanceof ValidatorContract) {
@@ -110,5 +115,43 @@ class ValidateAspect implements AspectInterface
             }
         }
         return new LaravelValidator();
+    }
+
+    /** 执行规则校验 */
+    private function validateRules(array $data, array $rules, array $messages): void
+    {
+        $errors = $this->resolveValidator()($data, $rules, $messages);
+        if (! empty($errors)) {
+            throw new ValidateException($errors);
+        }
+    }
+
+    /** spatie/laravel-data DTO 解析：实例化 → 校验 → 替换方法参数 */
+    private function resolveDto(ProceedingJoinPoint $point, string $dtoClass, array $data): array
+    {
+        try {
+            $dto = $dtoClass::from($data);
+
+            // 替换方法签名中匹配的 DTO 参数
+            foreach ($point->getReflectMethod()->getParameters() as $param) {
+                $type = $param->getType();
+                if ($type instanceof \ReflectionNamedType && !$type->isBuiltin()
+                    && is_a($dtoClass, $type->getName(), true)
+                    && isset($point->arguments['keys'][$param->getName()])
+                ) {
+                    $point->arguments['keys'][$param->getName()] = $dto;
+                    break;
+                }
+            }
+
+            return method_exists($dto, 'toArray') ? $dto->toArray() : $data;
+        } catch (\Spatie\LaravelData\Exceptions\ValidationException $e) {
+            throw new ValidateException($e->validator->errors()->toArray());
+        }
+    }
+
+    private function isDtoAvailable(): bool
+    {
+        return class_exists(\Spatie\LaravelData\Data::class);
     }
 }

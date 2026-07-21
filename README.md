@@ -207,6 +207,13 @@ class OrderSync
 
 Requires `workerman/crontab ^1.0`.
 
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `rule` | `string` | **required** | cron 表达式，如 `* * * * *` |
+| `name` | `?string` | `null` | 任务名称 |
+| `lockSeconds` | `int` | `0` | 分布式锁 TTL，0=不启用 |
+| `lockConnection` | `string` | `'default'` | Redis 连接名 |
+
 ### 5. Event Listeners (`#[Listener]`)
 
 ```php
@@ -399,6 +406,7 @@ public function store(Request $request): Response
 | `rules` | `array` | `[]` | 校验规则 |
 | `messages` | `array` | `[]` | 自定义错误消息 |
 | `requestParam` | `?string` | `null` | Request 参数名，null=自动发现（含子类） |
+| `dto` | `?string` | `null` | spatie/laravel-data DTO 类名，自动实例化并校验 |
 
 **自定义校验器：** 在容器中绑定 `ValidatorContract` 即可替换默认实现：
 ```php
@@ -496,6 +504,7 @@ return [
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `spanName` | `?string` | `null` | span 名称，null 时自动 `ClassName::methodName` |
+| `sampleRate` | `float` | `1.0` | 采样率 0.0-1.0，0.1 = 10% 采样，降低高吞吐开销 |
 
 ### 16. OpenAPI Generator + Swagger UI
 
@@ -522,6 +531,26 @@ php webman attributes:openapi --output=public/openapi.json
 
 扫描 `#[Controller]` + 路由注解 → OpenAPI 3.0 JSON。
 
+
+**自定义文档注解：**
+
+```php
+use Vzina\Attributes\Attribute\Route\{GetMapping, Summary, Description, Header, ApiResponse, Tag};
+
+#[Controller(prefix: '/api')]
+#[Tag('用户管理')]
+#[Header('Authorization', description: 'JWT token', required: true)]
+class UserController
+{
+    #[GetMapping('/profile')]
+    #[Summary('获取用户信息')]
+    #[Description('返回当前登录用户的完整资料、权限和偏好设置')]
+    #[ApiResponse(200, '成功返回用户信息')]
+    #[ApiResponse(401, '未授权访问')]
+    #[ApiResponse(404, '用户不存在')]
+    public function profile(): Response { ... }
+}
+```
 ### 17. CLI Commands (`#[Command]`)
 
 ```php
@@ -551,6 +580,26 @@ php webman app:greet
 |---|---|---|---|
 | `name` | `string` | **required** | 命令名称 |
 | `description` | `?string` | `null` | 命令描述 |
+
+---
+
+### 18. 属性调试命令 (`attributes:list`)
+
+```bash
+# 列出所有已扫描类的注解
+php webman attributes:list
+
+# 过滤指定类
+php webman attributes:list --class=UserController
+
+# 过滤指定注解类型
+php webman attributes:list --type=Inject
+```
+
+| 选项 | 简写 | 说明 |
+|---|---|---|
+| `--class` | `-c` | 按类名过滤（支持部分匹配） |
+| `--type` | `-t` | 按注解类型过滤（如 Inject、Cacheable） |
 
 ---
 

@@ -30,7 +30,12 @@ class InjectPropertyHandler implements PropertyHandlerInterface
 
         // webman Container 不会对未注册类做 auto-make，这里手动兜底
         if ($instance === null && class_exists($targetValue)) {
-            $instance = new $targetValue();
+            $instance = Container::make($targetValue);
+        }
+
+        // 接口类型：尝试从容器中重新获取（可能绑定了实现）
+        if ($instance === null && interface_exists($targetValue)) {
+            $instance = Container::get($targetValue);
         }
 
         if ($instance !== null) {

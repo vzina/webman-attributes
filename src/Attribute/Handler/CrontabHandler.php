@@ -28,11 +28,24 @@ class CrontabHandler
             /** @var Crontab $attribute */
             $attribute = $methodAttribute['attribute'];
             if ($attribute->rule && ($instance = $container->get($methodAttribute['class']))) {
-                new WorkermanCrontab(
-                    $attribute->rule,
-                    [$instance, $methodAttribute['method']],
-                    (string)$attribute->name
-                );
+                $callback = [$instance, $methodAttribute['method']];
+
+                // 分布式锁：多 worker 环境下防止重复执行
+                if ($attribute->lockSeconds > 0 && class_exists(\support\Redis::class)) {
+                    $lockKey = 'crontab_lock:' . ($attribute->name ?: ($methodAttribute['class'] . '::' . $methodAttribute['method']));
+                    $lockConn = $attribute->lockConnection;
+                    $original = $callback;
+                    $callback = static function () use ($original, $lockKey, $attribute, $lockConn) {
+                        $redis = \support\Redis::connection($lockConn);
+                        if (! $redis->set($lockKey, '1', ['NX', 'EX' => $attribute->lockSeconds])) {
+                            return; // 其他 worker 已在执行
+                        }
+                        // 锁通过 EX TTL 自动过期，无需主动释放
+                        return call_user_func($original);
+                    };
+                }
+
+                new WorkermanCrontab($attribute->rule, $callback, (string)$attribute->name);
             }
         }
     }

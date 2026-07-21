@@ -13,6 +13,7 @@ declare (strict_types=1);
 namespace Vzina\Attributes\Attribute\Handler;
 
 use support\Container;
+use Illuminate\Support\Arr;
 use Vzina\Attributes\Ast\SplPriorityQueue;
 use Vzina\Attributes\Collector\AttributeCollector;
 use Webman\Bootstrap;
@@ -44,7 +45,22 @@ class ListenerHandler implements Bootstrap
                 }
 
                 foreach ($events as $event) {
-                    $queue->insert([$event, [$instance, $listener['method']]], (int)$attribute->priority);
+                    $handler = [$instance, $listener['method']];
+
+                    // when 条件过滤：格式为 "key=value"，支持点分隔嵌套 key（如 order.status=paid）
+                    if ($attribute->when !== null) {
+                        [$whenKey, $whenVal] = explode('=', $attribute->when) + [null, null];
+                        $handler = static function ($data) use ($handler, $whenKey, $whenVal) {
+                            if ($whenKey === null) return;
+                            $actual = is_array($data) || $data instanceof \ArrayAccess
+                                ? Arr::get($data, $whenKey)
+                                : (is_object($data) ? Arr::get(get_object_vars($data), $whenKey) : null);
+                            if ((string) $actual !== $whenVal) return;
+                            return call_user_func($handler, $data);
+                        };
+                    }
+
+                    $queue->insert([$event, $handler], (int)$attribute->priority);
                 }
             }
         }

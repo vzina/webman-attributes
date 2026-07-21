@@ -16,12 +16,14 @@ use Vzina\Attributes\Attribute\Route\Controller;
 use Vzina\Attributes\Attribute\Route\DeleteMapping;
 use Vzina\Attributes\Attribute\Route\Description;
 use Vzina\Attributes\Attribute\Route\GetMapping;
+use Vzina\Attributes\Attribute\Route\Header;
 use Vzina\Attributes\Attribute\Route\Mapping;
 use Vzina\Attributes\Attribute\Route\PatchMapping;
 use Vzina\Attributes\Attribute\Route\PostMapping;
 use Vzina\Attributes\Attribute\Route\PutMapping;
 use Vzina\Attributes\Attribute\Route\RequestMapping;
 use Vzina\Attributes\Attribute\Route\Resource;
+use Vzina\Attributes\Attribute\Route\ApiResponse;
 use Vzina\Attributes\Attribute\Route\Summary;
 use Vzina\Attributes\Attribute\Route\Tag;
 use Vzina\Attributes\Collector\AttributeCollector;
@@ -203,65 +205,51 @@ class Generator
 
     // ==================== 操作构建 ====================
 
-    /** 构建 OpenAPI Operation 对象 */
+    /** 构建 OpenAPI Operation 对象（使用 Builder 模式） */
     private static function buildOperation(
         string $className, string $methodName, ?Mapping $mapping, PhpDocReader $reader, array $methodAttrs = []
     ): array {
         $classMeta = AttributeCollector::get($className);
-        // 方法级 #[Tag] > 类级 #[Tag] > 自动推导
         $tag = $methodAttrs[Tag::class]->value
             ?? $classMeta['_c'][Tag::class]->value
             ?? self::extractTag($className);
 
-        $op = [
-            'operationId' => $className . '.' . $methodName,
-            'tags'        => [$tag],
-            'responses'   => ['200' => ['description' => 'Successful response']],
-        ];
+        $builder = (new OperationBuilder($className, $methodName, $tag))
+            ->summary(
+                $methodAttrs[Summary::class]->value
+                ?? ($mapping !== null ? ($mapping->options['summary'] ?? null) : null)
+            )
+            ->headers(self::collectAttrs($classMeta['_c'] ?? [], Header::class))
+            ->headers(self::collectAttrs($methodAttrs, Header::class));
 
-        // #[Summary] 覆盖
-        if (isset($methodAttrs[Summary::class])) {
-            $op['summary'] = $methodAttrs[Summary::class]->value;
-        } elseif ($mapping !== null && ! empty($mapping->options['summary'] ?? null)) {
-            $op['summary'] = $mapping->options['summary'];
-        }
-
-        // #[Description] 覆盖
         if (isset($methodAttrs[Description::class])) {
-            $op['description'] = $methodAttrs[Description::class]->value;
+            $builder->description($methodAttrs[Description::class]->value);
         }
 
-        // Parameters from PHPDoc @param
+        // 合并类级和方法级 #[ApiResponse]
+        $allResponses = array_merge(
+            self::collectAttrs($classMeta['_c'] ?? [], ApiResponse::class),
+            self::collectAttrs($methodAttrs, ApiResponse::class)
+        );
+        $builder->responseDocs($allResponses);
+
         try {
             $refMethod = ReflectionManager::reflectMethod($className, $methodName);
-            $params = self::buildParameters($refMethod, $reader);
-            if ($params) {
-                $op['parameters'] = array_merge($params, $op['parameters'] ?? []);
-            }
-
-            // Response schema from @return
-            $returnType = self::parseReturnType($refMethod);
-            if ($returnType) {
-                $op['responses']['200']['content'] = [
-                    'application/json' => ['schema' => self::typeToSchema($returnType)],
-                ];
-            }
-
-            // Description from docblock summary (仅当未显式设置时)
-            if (! isset($op['description'])) {
-                $docComment = $refMethod->getDocComment();
-                if ($docComment) {
-                    $desc = self::parseDocSummary($docComment);
-                    if ($desc) {
-                        $op['description'] = $desc;
-                    }
-                }
-            }
+            $builder->buildParameters($refMethod, $reader);
+            $builder->responseSchema(self::parseReturnType($refMethod));
+            $builder->descriptionFromPhpDoc($refMethod);
         } catch (\ReflectionException) {
             // method not found, skip reflection
         }
 
-        return $op;
+        return $builder->build();
+    }
+
+    /** 收集可重复注解实例（Header、ApiResponse 等 IS_REPEATABLE 注解） */
+    private static function collectAttrs(array $meta, string $attrClass): array
+    {
+        if (! isset($meta[$attrClass])) return [];
+        return is_array($meta[$attrClass]) ? $meta[$attrClass] : [$meta[$attrClass]];
     }
 
     /** 框架内部类型，不作为 OpenAPI 参数暴露 */
@@ -308,7 +296,7 @@ class Generator
     }
 
     /** 判断类型是否为框架注入类型（不应出现在 API 文档中） */
-    private static function isFrameworkType(string $typeName): bool
+    public static function isFrameworkType(string $typeName): bool
     {
         $typeName = ltrim($typeName, '\\?');
         foreach (self::FRAMEWORK_TYPES as $ft) {
@@ -350,7 +338,7 @@ class Generator
     }
 
     /** 类型到 OpenAPI Schema */
-    private static function typeToSchema(string $type): array
+    public static function typeToSchema(string $type): array
     {
         $type = ltrim($type, '?');
         $schema = [];
@@ -415,7 +403,7 @@ class Generator
     }
 
     /** 提取 docblock 第一行描述 */
-    private static function parseDocSummary(string $docComment): string
+    public static function parseDocSummary(string $docComment): string
     {
         $lines = explode("\n", trim($docComment, "/* \t\n\r\0\x0B"));
         foreach ($lines as $line) {

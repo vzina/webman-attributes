@@ -91,6 +91,7 @@ class CacheableAspect implements AspectInterface
                         return $refresh();
                     }
                 }
+                if ($attr->cacheNull && $cached['data'] === null) { return null; }
                 return $cached['data'];
             }
         }
