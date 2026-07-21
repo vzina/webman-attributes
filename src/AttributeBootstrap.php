@@ -10,8 +10,8 @@ declare (strict_types=1);
 namespace Vzina\Attributes;
 
 use Vzina\Attributes\Attribute\BootAttribute;
-use Vzina\Attributes\Attribute\DependHandler;
-use Vzina\Attributes\Attribute\ListenerHandler;
+use Vzina\Attributes\Attribute\Handler\DependHandler;
+use Vzina\Attributes\Attribute\Handler\ListenerHandler;
 use Vzina\Attributes\Reflection\ReflectionManager;
 use Webman\Bootstrap;
 use Webman\Event\Event;

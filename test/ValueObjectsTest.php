@@ -194,7 +194,7 @@ class ValueObjectsTest extends TestCase
     public function testSetStateReconstructsAttributeObject(): void
     {
         // 使用 Inject 属性测试（有构造函数属性提升 + 额外属性）
-        $original = new \Vzina\Attributes\Attribute\Inject(
+        $original = new \Vzina\Attributes\Attribute\Annotation\Inject(
             value: 'App\\Service\\UserService',
             required: true,
             lazy: true
@@ -209,9 +209,9 @@ class ValueObjectsTest extends TestCase
             'targetValue' => 'LazyProxy\\App\\Service\\UserService',
         ];
 
-        $restored = \Vzina\Attributes\Attribute\Inject::__set_state($state);
+        $restored = \Vzina\Attributes\Attribute\Annotation\Inject::__set_state($state);
 
-        $this->assertInstanceOf(\Vzina\Attributes\Attribute\Inject::class, $restored);
+        $this->assertInstanceOf(\Vzina\Attributes\Attribute\Annotation\Inject::class, $restored);
         $this->assertEquals('App\\Service\\UserService', $restored->value);
         $this->assertTrue($restored->required);
         $this->assertTrue($restored->lazy);
@@ -220,7 +220,7 @@ class ValueObjectsTest extends TestCase
 
     public function testSetStateVarExportRoundtrip(): void
     {
-        $original = new \Vzina\Attributes\Attribute\Value(
+        $original = new \Vzina\Attributes\Attribute\Annotation\Value(
             key: 'app.name'
         );
 
@@ -228,13 +228,13 @@ class ValueObjectsTest extends TestCase
         $exported = var_export($original, true);
         $restored = eval("return {$exported};");
 
-        $this->assertInstanceOf(\Vzina\Attributes\Attribute\Value::class, $restored);
+        $this->assertInstanceOf(\Vzina\Attributes\Attribute\Annotation\Value::class, $restored);
         $this->assertEquals('app.name', $restored->key);
     }
 
     public function testSetStateWithCacheableAttribute(): void
     {
-        $original = new \Vzina\Attributes\Attribute\Cacheable(
+        $original = new \Vzina\Attributes\Attribute\Annotation\Cacheable(
             prefix: 'user',
             value: '#{params.id}',
             ttl: 3600,
@@ -250,7 +250,7 @@ class ValueObjectsTest extends TestCase
         $exported = var_export($original, true);
         $restored = eval("return {$exported};");
 
-        $this->assertInstanceOf(\Vzina\Attributes\Attribute\Cacheable::class, $restored);
+        $this->assertInstanceOf(\Vzina\Attributes\Attribute\Annotation\Cacheable::class, $restored);
         $this->assertEquals('user', $restored->prefix);
         $this->assertEquals('#{params.id}', $restored->value);
         $this->assertEquals(3600, $restored->ttl);

@@ -15,7 +15,7 @@ use PhpParser\NodeVisitor\NameResolver;
 use ReflectionClass;
 use Vzina\Attributes\Ast\AstParser;
 use Vzina\Attributes\Ast\ProxyLoaderInterface;
-use Vzina\Attributes\Attribute\Inject;
+use Vzina\Attributes\Attribute\Annotation\Inject;
 use Vzina\Attributes\Collector\AttributeCollector;
 use Vzina\Attributes\Scan\Options;
 
@@ -38,7 +38,17 @@ class LazyLoader implements ProxyLoaderInterface
                 if (! file_exists($proxyFile) ||
                     (isset($originalClassMap[$proxyClass]) && filemtime($proxyFile) < filemtime($originalClassMap[$proxyClass]))
                 ) {
-                    file_put_contents($proxyFile, $this->lazyProxy($astParser, $proxyClass, $attr->value), LOCK_EX);
+                    try {
+                        file_put_contents($proxyFile, $this->lazyProxy($astParser, $proxyClass, $attr->value), LOCK_EX);
+                    } catch (\Throwable $e) {
+                        error_log(sprintf(
+                            '[LazyLoader] Failed to generate lazy proxy for %s (target: %s): %s',
+                            $proxyClass,
+                            $attr->value,
+                            $e->getMessage()
+                        ));
+                        continue;
+                    }
                 }
 
                 $classMap[$proxyClass] = $proxyFile;

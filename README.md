@@ -58,6 +58,22 @@ return [
 
 ## Architecture
 
+
+### Directory Layout
+
+```
+src/Attribute/
+├── Annotation/   ← 注解定义 (Cacheable, Inject, Trace…)
+├── Aspect/       ← 切面实现 (CacheableAspect, TraceAspect…)
+├── Contract/     ← 接口 (ValidatorContract, TracerContract…)
+├── Handler/      ← 处理器 (CommandHandler, ListenerHandler…)
+├── Default/      ← 默认实现 (LaravelValidator…)
+├── Strategy/     ← 策略模式 (ExponentialBackoff, LinearBackoff)
+├── Route/        ← 路由系统 (Controller, Mapping, DispatcherFactory…)
+└── 根级          ← 基类/接口/VO (AbstractAttribute, Message, TraceContext…)
+```
+
+### Boot Flow
 ```
 Composer autoload
   └── bootstrap.php ─────────────→ AttributeLoader::init()
@@ -100,7 +116,7 @@ Worker startup
 ### 1. Dependency Injection (`#[Inject]`)
 
 ```php
-use Vzina\Attributes\Attribute\Inject;
+use Vzina\Attributes\Attribute\Annotation\Inject;
 
 class UserController
 {
@@ -126,7 +142,7 @@ class UserController
 ### 2. Configuration Injection (`#[Value]`)
 
 ```php
-use Vzina\Attributes\Attribute\Value;
+use Vzina\Attributes\Attribute\Annotation\Value;
 
 class Mailer
 {
@@ -143,7 +159,7 @@ Reads from `config()` (Webman Config). The property default value serves as fall
 ### 3. Method Caching (`#[Cacheable]`)
 
 ```php
-use Vzina\Attributes\Attribute\Cacheable;
+use Vzina\Attributes\Attribute\Annotation\Cacheable;
 
 class OrderService
 {
@@ -177,7 +193,7 @@ class OrderService
 ### 4. Scheduled Tasks (`#[Crontab]`)
 
 ```php
-use Vzina\Attributes\Attribute\Crontab;
+use Vzina\Attributes\Attribute\Annotation\Crontab;
 
 #[Crontab(rule: '*/5 * * * *', name: 'order-sync')]
 class OrderSync
@@ -194,7 +210,7 @@ Requires `workerman/crontab ^1.0`.
 ### 5. Event Listeners (`#[Listener]`)
 
 ```php
-use Vzina\Attributes\Attribute\Listener;
+use Vzina\Attributes\Attribute\Annotation\Listener;
 
 #[Listener(event: 'user.registered', priority: 10)]
 class SendWelcomeEmail
@@ -290,7 +306,7 @@ class LoggingAspect implements AspectInterface
 ### 9. Service Registration (`#[Depend]`)
 
 ```php
-use Vzina\Attributes\Attribute\Depend;
+use Vzina\Attributes\Attribute\Annotation\Depend;
 
 // 基础用法：自动装配
 #[Depend(id: LoggerInterface::class, priority: 10)]
@@ -323,7 +339,7 @@ class ExpensiveService
 ### 10. Custom Processes (`#[Process]`)
 
 ```php
-use Vzina\Attributes\Attribute\Process;
+use Vzina\Attributes\Attribute\Annotation\Process;
 
 #[Process(name: 'metrics-collector')]
 class MetricsCollector
@@ -340,7 +356,7 @@ class MetricsCollector
 ### 11. Database Transactions (`#[Transactional]`)
 
 ```php
-use Vzina\Attributes\Attribute\Transactional;
+use Vzina\Attributes\Attribute\Annotation\Transactional;
 
 class OrderService
 {
@@ -365,7 +381,7 @@ class OrderService
 ### 12. Request Validation (`#[Validate]`)
 
 ```php
-use Vzina\Attributes\Attribute\Validate;
+use Vzina\Attributes\Attribute\Annotation\Validate;
 
 #[Validate(rules: [
     'name'  => 'required|min:3',
@@ -395,7 +411,7 @@ return [
 ### 13. Automatic Retry (`#[Retry]`)
 
 ```php
-use Vzina\Attributes\Attribute\Retry;
+use Vzina\Attributes\Attribute\Annotation\Retry;
 
 #[Retry(maxAttempts: 3, delayMs: 100, backoff: 2.0, on: [NetworkException::class])]
 public function callApi(): array
@@ -435,7 +451,7 @@ class ApiController
 符合 W3C Trace Context Level 2 规范，traceId: 32 hex (16 bytes)，spanId: 16 hex (8 bytes)。
 
 ```php
-use Vzina\Attributes\Attribute\Trace;
+use Vzina\Attributes\Attribute\Annotation\Trace;
 
 #[Trace(spanName: 'order.checkout')]
 public function checkout(int $orderId): Order
@@ -504,7 +520,7 @@ php webman attributes:openapi --output=public/openapi.json
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
-use Vzina\Attributes\Attribute\Command as CommandAttribute;
+use Vzina\Attributes\Attribute\Annotation\Command as CommandAttribute;
 
 #[CommandAttribute(name: 'app:greet', description: 'Say hello to the user')]
 class GreetCommand extends Command

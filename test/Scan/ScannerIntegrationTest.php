@@ -87,7 +87,7 @@ class ScannerIntegrationTest extends TestCase
     {
         $this->writeFixture('S1/OrderS1.php',
             "namespace App\\S1;\n" .
-            "use Vzina\\Attributes\\Attribute\\Listener;\n" .
+            "use Vzina\\Attributes\\Attribute\\Annotation\\Listener;\n" .
             "#[Listener(event: 'order.created')]\n" .
             "class OrderS1 {}\n"
         );
@@ -95,7 +95,7 @@ class ScannerIntegrationTest extends TestCase
         $scanner = new Scanner($this->makeOptions());
         $scanner->scan([]);
 
-        $classes = AttributeCollector::getClassesByAttribute('Vzina\Attributes\Attribute\Listener');
+        $classes = AttributeCollector::getClassesByAttribute('Vzina\Attributes\Attribute\Annotation\Listener');
         $this->assertArrayHasKey('App\S1\OrderS1', $classes);
     }
 
@@ -103,7 +103,7 @@ class ScannerIntegrationTest extends TestCase
     {
         $this->writeFixture('S2/PaymentS2.php',
             "namespace App\\S2;\n" .
-            "use Vzina\\Attributes\\Attribute\\Cacheable;\n" .
+            "use Vzina\\Attributes\\Attribute\\Annotation\\Cacheable;\n" .
             "class PaymentS2 {\n" .
             "    #[Cacheable(prefix: 'pay', ttl: 60)]\n" .
             "    public function process(): bool { return true; }\n" .
@@ -114,14 +114,14 @@ class ScannerIntegrationTest extends TestCase
         $scanner->scan([]);
 
         $methods = AttributeCollector::getClassMethodAttribute('App\S2\PaymentS2', 'process');
-        $this->assertArrayHasKey('Vzina\Attributes\Attribute\Cacheable', $methods);
+        $this->assertArrayHasKey('Vzina\Attributes\Attribute\Annotation\Cacheable', $methods);
     }
 
     public function testScannerCollectsPropertyLevelAttribute(): void
     {
         $this->writeFixture('S3/HomeS3.php',
             "namespace App\\S3;\n" .
-            "use Vzina\\Attributes\\Attribute\\Inject;\n" .
+            "use Vzina\\Attributes\\Attribute\\Annotation\\Inject;\n" .
             "class HomeS3 {\n" .
             "    #[Inject(value: 'App\\\\Service\\\\Order')]\n" .
             "    private \$orderService;\n" .
@@ -132,7 +132,7 @@ class ScannerIntegrationTest extends TestCase
         $scanner->scan([]);
 
         $prop = AttributeCollector::getClassPropertyAttribute('App\S3\HomeS3', 'orderService');
-        $this->assertArrayHasKey('Vzina\Attributes\Attribute\Inject', $prop);
+        $this->assertArrayHasKey('Vzina\Attributes\Attribute\Annotation\Inject', $prop);
     }
 
     // ==================== 缓存 ====================
@@ -141,7 +141,7 @@ class ScannerIntegrationTest extends TestCase
     {
         $this->writeFixture('S4/UserS4.php',
             "namespace App\\S4;\n" .
-            "use Vzina\\Attributes\\Attribute\\Depend;\n" .
+            "use Vzina\\Attributes\\Attribute\\Annotation\\Depend;\n" .
             "#[Depend(id: 'user.s4', singleton: true)]\n" .
             "class UserS4 {}\n"
         );
@@ -175,8 +175,8 @@ class ScannerIntegrationTest extends TestCase
     {
         $this->writeFixture('S6/MultiS6.php',
             "namespace App\\S6;\n" .
-            "use Vzina\\Attributes\\Attribute\\Crontab;\n" .
-            "use Vzina\\Attributes\\Attribute\\Listener;\n" .
+            "use Vzina\\Attributes\\Attribute\\Annotation\\Crontab;\n" .
+            "use Vzina\\Attributes\\Attribute\\Annotation\\Listener;\n" .
             "#[Listener(event: 's6')]\n" .
             "#[Crontab(rule: '* * * * *')]\n" .
             "class MultiS6 { public function handle(): void {} }\n"
@@ -186,9 +186,9 @@ class ScannerIntegrationTest extends TestCase
         $scanner->scan([]);
 
         $this->assertArrayHasKey('App\S6\MultiS6',
-            AttributeCollector::getClassesByAttribute('Vzina\Attributes\Attribute\Listener'));
+            AttributeCollector::getClassesByAttribute('Vzina\Attributes\Attribute\Annotation\Listener'));
         $this->assertArrayHasKey('App\S6\MultiS6',
-            AttributeCollector::getClassesByAttribute('Vzina\Attributes\Attribute\Crontab'));
+            AttributeCollector::getClassesByAttribute('Vzina\Attributes\Attribute\Annotation\Crontab'));
     }
 
     public function testScannerHandlesEmptyDirectory(): void
@@ -202,7 +202,7 @@ class ScannerIntegrationTest extends TestCase
     {
         $this->writeFixture('S8/AlphaS8.php',
             "namespace App\\S8;\n" .
-            "use Vzina\\Attributes\\Attribute\\Listener;\n" .
+            "use Vzina\\Attributes\\Attribute\\Annotation\\Listener;\n" .
             "#[Listener(event: 'a8')]\n" .
             "class AlphaS8 {}\n"
         );
@@ -214,7 +214,7 @@ class ScannerIntegrationTest extends TestCase
 
         $this->writeFixture('S8/BetaS8.php',
             "namespace App\\S8;\n" .
-            "use Vzina\\Attributes\\Attribute\\Listener;\n" .
+            "use Vzina\\Attributes\\Attribute\\Annotation\\Listener;\n" .
             "#[Listener(event: 'b8')]\n" .
             "class BetaS8 {}\n"
         );
@@ -222,7 +222,7 @@ class ScannerIntegrationTest extends TestCase
         $scanner2 = new Scanner($this->makeOptions(['cacheable' => false]));
         $scanner2->scan([]);
 
-        $classes = AttributeCollector::getClassesByAttribute('Vzina\Attributes\Attribute\Listener');
+        $classes = AttributeCollector::getClassesByAttribute('Vzina\Attributes\Attribute\Annotation\Listener');
         $this->assertArrayHasKey('App\S8\AlphaS8', $classes, 'Old class should persist');
         $this->assertArrayHasKey('App\S8\BetaS8', $classes, 'New class should be collected');
     }
@@ -231,7 +231,7 @@ class ScannerIntegrationTest extends TestCase
     {
         $this->writeFixture('S9/GoneS9.php',
             "namespace App\\S9;\n" .
-            "use Vzina\\Attributes\\Attribute\\Listener;\n" .
+            "use Vzina\\Attributes\\Attribute\\Annotation\\Listener;\n" .
             "#[Listener(event: 'g9')]\n" .
             "class GoneS9 {}\n"
         );
@@ -240,7 +240,7 @@ class ScannerIntegrationTest extends TestCase
         $scanner->scan([]);
 
         $this->assertArrayHasKey('App\S9\GoneS9',
-            AttributeCollector::getClassesByAttribute('Vzina\Attributes\Attribute\Listener'));
+            AttributeCollector::getClassesByAttribute('Vzina\Attributes\Attribute\Annotation\Listener'));
 
         unlink($this->scanDir . '/S9/GoneS9.php');
 
@@ -248,7 +248,7 @@ class ScannerIntegrationTest extends TestCase
         $scanner2->scan([]);
 
         $this->assertArrayNotHasKey('App\S9\GoneS9',
-            AttributeCollector::getClassesByAttribute('Vzina\Attributes\Attribute\Listener'),
+            AttributeCollector::getClassesByAttribute('Vzina\Attributes\Attribute\Annotation\Listener'),
             'Deleted class should be removed from collectors');
     }
 
@@ -256,7 +256,7 @@ class ScannerIntegrationTest extends TestCase
     {
         $this->writeFixture('S11/ValidateS11.php',
             "namespace App\\S11;\n" .
-            "use Vzina\\Attributes\\Attribute\\Validate;\n" .
+            "use Vzina\\Attributes\\Attribute\\Annotation\\Validate;\n" .
             "class ValidateS11 {\n" .
             "    #[Validate(rules: ['email' => 'required|email'], messages: ['email.required' => '必填'])]\n" .
             "    public function store(): void {}\n" .
@@ -267,16 +267,16 @@ class ScannerIntegrationTest extends TestCase
         $scanner->scan([]);
 
         $methods = AttributeCollector::getClassMethodAttribute('App\S11\ValidateS11', 'store');
-        $this->assertArrayHasKey('Vzina\Attributes\Attribute\Validate', $methods);
-        $this->assertEquals(['email' => 'required|email'], $methods['Vzina\Attributes\Attribute\Validate']->rules);
-        $this->assertEquals(['email.required' => '必填'], $methods['Vzina\Attributes\Attribute\Validate']->messages);
+        $this->assertArrayHasKey('Vzina\Attributes\Attribute\Annotation\Validate', $methods);
+        $this->assertEquals(['email' => 'required|email'], $methods['Vzina\Attributes\Attribute\Annotation\Validate']->rules);
+        $this->assertEquals(['email.required' => '必填'], $methods['Vzina\Attributes\Attribute\Annotation\Validate']->messages);
     }
 
     public function testScannerCollectsRetryAttribute(): void
     {
         $this->writeFixture('S12/RetryS12.php',
             "namespace App\\S12;\n" .
-            "use Vzina\\Attributes\\Attribute\\Retry;\n" .
+            "use Vzina\\Attributes\\Attribute\\Annotation\\Retry;\n" .
             "class RetryS12 {\n" .
             "    #[Retry(maxAttempts: 5, delayMs: 200, backoff: 2.0, on: ['RuntimeException'])]\n" .
             "    public function callApi(): string { return 'ok'; }\n" .
@@ -287,16 +287,16 @@ class ScannerIntegrationTest extends TestCase
         $scanner->scan([]);
 
         $methods = AttributeCollector::getClassMethodAttribute('App\S12\RetryS12', 'callApi');
-        $this->assertArrayHasKey('Vzina\Attributes\Attribute\Retry', $methods);
-        $this->assertEquals(5, $methods['Vzina\Attributes\Attribute\Retry']->maxAttempts);
-        $this->assertSame(2.0, $methods['Vzina\Attributes\Attribute\Retry']->backoff);
+        $this->assertArrayHasKey('Vzina\Attributes\Attribute\Annotation\Retry', $methods);
+        $this->assertEquals(5, $methods['Vzina\Attributes\Attribute\Annotation\Retry']->maxAttempts);
+        $this->assertSame(2.0, $methods['Vzina\Attributes\Attribute\Annotation\Retry']->backoff);
     }
 
     public function testScannerCollectsTraceAttribute(): void
     {
         $this->writeFixture('S13/TraceS13.php',
             "namespace App\\S13;\n" .
-            "use Vzina\\Attributes\\Attribute\\Trace;\n" .
+            "use Vzina\\Attributes\\Attribute\\Annotation\\Trace;\n" .
             "class TraceS13 {\n" .
             "    #[Trace(spanName: 'api.checkout')]\n" .
             "    public function checkout(): string { return 'ok'; }\n" .
@@ -307,15 +307,15 @@ class ScannerIntegrationTest extends TestCase
         $scanner->scan([]);
 
         $methods = AttributeCollector::getClassMethodAttribute('App\S13\TraceS13', 'checkout');
-        $this->assertArrayHasKey('Vzina\Attributes\Attribute\Trace', $methods);
-        $this->assertEquals('api.checkout', $methods['Vzina\Attributes\Attribute\Trace']->spanName);
+        $this->assertArrayHasKey('Vzina\Attributes\Attribute\Annotation\Trace', $methods);
+        $this->assertEquals('api.checkout', $methods['Vzina\Attributes\Attribute\Annotation\Trace']->spanName);
     }
 
     public function testScannerCollectsCommandAttribute(): void
     {
         $this->writeFixture('S14/GreetS14.php',
             "namespace App\\S14;\n" .
-            "use Vzina\\Attributes\\Attribute\\Command;\n" .
+            "use Vzina\\Attributes\\Attribute\\Annotation\\Command;\n" .
             "#[Command(name: 'app:greet', description: 'Say hello')]\n" .
             "class GreetS14 {}\n"
         );
@@ -323,7 +323,7 @@ class ScannerIntegrationTest extends TestCase
         $scanner = new Scanner($this->makeOptions());
         $scanner->scan([]);
 
-        $classes = AttributeCollector::getClassesByAttribute('Vzina\Attributes\Attribute\Command');
+        $classes = AttributeCollector::getClassesByAttribute('Vzina\Attributes\Attribute\Annotation\Command');
         $this->assertArrayHasKey('App\S14\GreetS14', $classes);
         $this->assertEquals('app:greet', $classes['App\S14\GreetS14']->name);
         $this->assertEquals('Say hello', $classes['App\S14\GreetS14']->description);

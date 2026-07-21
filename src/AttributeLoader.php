@@ -11,7 +11,7 @@ namespace Vzina\Attributes;
 
 use PhpParser\NodeVisitor;
 use Vzina\Attributes\Ast\AstVisitorManager;
-use Vzina\Attributes\Attribute\PropertyHandlerInterface;
+use Vzina\Attributes\Attribute\Contract\PropertyHandlerInterface;
 use Vzina\Attributes\Collector\PropertyManagerCollector;
 use Vzina\Attributes\Reflection\Composer;
 use Vzina\Attributes\Scan\Options;
@@ -27,17 +27,17 @@ class AttributeLoader
             Collector\ConstantsCollector::class,
         ],
         'aspects' => [
-            Attribute\InjectAspect::class,
-            Attribute\ValueAspect::class,
-            Attribute\CacheableAspect::class,
-            Attribute\TransactionalAspect::class,
-            Attribute\ValidateAspect::class,
-            Attribute\RetryAspect::class,
-            Attribute\TraceAspect::class,
+            Attribute\Aspect\InjectAspect::class,
+            Attribute\Aspect\ValueAspect::class,
+            Attribute\Aspect\CacheableAspect::class,
+            Attribute\Aspect\TransactionalAspect::class,
+            Attribute\Aspect\ValidateAspect::class,
+            Attribute\Aspect\RetryAspect::class,
+            Attribute\Aspect\TraceAspect::class,
         ],
         'property_handlers' => [
-            Attribute\InjectPropertyHandler::class,
-            Attribute\ValuePropertyHandler::class,
+            Attribute\Handler\InjectPropertyHandler::class,
+            Attribute\Handler\ValuePropertyHandler::class,
         ],
         'ast_visitors' => [
             Ast\AstPropertyVisitor::class,

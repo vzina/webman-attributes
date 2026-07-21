@@ -164,8 +164,16 @@ class Scanner
         foreach ($classPaths as $className => $filePath) {
             if ($this->filesystem->lastModified($filePath) >= $threshold) {
                 foreach ($collectors as $c) { $c::clear($className); }
-                require_once $filePath;
-                $this->collect(new ReflectionClass($className));
+                try {
+                    require_once $filePath;
+                    $this->collect(new ReflectionClass($className));
+                } catch (\Throwable $e) {
+                    error_log(sprintf(
+                        '[Scanner] Failed to collect attributes from %s: %s',
+                        $className,
+                        $e->getMessage()
+                    ));
+                }
             }
         }
 
@@ -173,7 +181,15 @@ class Scanner
         $map = array_merge($cachedMap, $classPaths);
         foreach ($this->option->astProxyLoaders() as $loader) {
             if (class_exists($loader) && ($instance = new $loader) instanceof ProxyLoaderInterface) {
-                $instance($this->option, $map);
+                try {
+                    $instance($this->option, $map);
+                } catch (\Throwable $e) {
+                    error_log(sprintf(
+                        '[Scanner] ProxyLoader %s failed: %s',
+                        $loader,
+                        $e->getMessage()
+                    ));
+                }
             }
         }
 

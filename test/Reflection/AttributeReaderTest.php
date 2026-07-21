@@ -214,7 +214,7 @@ PHP;
         $content = <<<'PHP'
 namespace App\SingleGroupTest;
 
-use Vzina\Attributes\Attribute\{Trace};
+use Vzina\Attributes\Attribute\Annotation\{Trace};
 
 class TestClass {}
 PHP;
@@ -224,7 +224,7 @@ PHP;
         try {
             $ref = new \ReflectionClass('App\SingleGroupTest\TestClass');
             $this->assertEquals(
-                'Vzina\Attributes\Attribute\Trace',
+                'Vzina\Attributes\Attribute\Annotation\Trace',
                 AttributeReader::resolveClassName('Trace', $ref)
             );
         } finally {

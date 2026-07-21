@@ -17,7 +17,7 @@ use PhpParser\Node\Name;
 use PhpParser\Node\Stmt\TraitUse;
 use PhpParser\NodeVisitorAbstract;
 use ReflectionException;
-use Vzina\Attributes\Attribute\Inject;
+use Vzina\Attributes\Attribute\Annotation\Inject;
 use Vzina\Attributes\Reflection\ReflectionManager;
 
 class AstPropertyVisitor extends NodeVisitorAbstract

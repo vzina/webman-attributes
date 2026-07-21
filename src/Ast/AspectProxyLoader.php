@@ -33,9 +33,18 @@ class AspectProxyLoader implements ProxyLoaderInterface
             if (! file_exists($proxyFile) ||
                 (isset($classMap[$className]) && filemtime($proxyFile) < filemtime($classMap[$className]))
             ) {
-                $tmpFile = $proxyFile . '.' . getmypid() . '.tmp';
-                file_put_contents($tmpFile, $this->generate($astParser, $className), LOCK_EX);
-                rename($tmpFile, $proxyFile);
+                try {
+                    $tmpFile = $proxyFile . '.' . getmypid() . '.tmp';
+                    file_put_contents($tmpFile, $this->generate($astParser, $className), LOCK_EX);
+                    rename($tmpFile, $proxyFile);
+                } catch (\Throwable $e) {
+                    error_log(sprintf(
+                        '[AspectProxyLoader] Failed to generate proxy for %s: %s',
+                        $className,
+                        $e->getMessage()
+                    ));
+                    continue;
+                }
             }
             $classMap[$className] = $proxyFile;
         }
@@ -145,7 +154,7 @@ class AspectProxyLoader implements ProxyLoaderInterface
 
         $removed = [];
         foreach (array_diff($old, $names) as $item) {
-            if (! AttributeCollector::getClassAttribute($item, 'Vzina\Attributes\Attribute\Aspect')) {
+            if (! AttributeCollector::getClassAttribute($item, 'Vzina\Attributes\Attribute\Annotation\Aspect')) {
                 $removed[] = $item;
             }
         }
