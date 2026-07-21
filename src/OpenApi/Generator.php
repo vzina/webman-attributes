@@ -14,6 +14,7 @@ use ReflectionMethod;
 use Vzina\Attributes\Attribute\Route\AutoController;
 use Vzina\Attributes\Attribute\Route\Controller;
 use Vzina\Attributes\Attribute\Route\DeleteMapping;
+use Vzina\Attributes\Attribute\Route\Description;
 use Vzina\Attributes\Attribute\Route\GetMapping;
 use Vzina\Attributes\Attribute\Route\Mapping;
 use Vzina\Attributes\Attribute\Route\PatchMapping;
@@ -21,6 +22,8 @@ use Vzina\Attributes\Attribute\Route\PostMapping;
 use Vzina\Attributes\Attribute\Route\PutMapping;
 use Vzina\Attributes\Attribute\Route\RequestMapping;
 use Vzina\Attributes\Attribute\Route\Resource;
+use Vzina\Attributes\Attribute\Route\Summary;
+use Vzina\Attributes\Attribute\Route\Tag;
 use Vzina\Attributes\Collector\AttributeCollector;
 use Vzina\Attributes\Reflection\ReflectionManager;
 
@@ -66,7 +69,7 @@ class Generator
             if (isset($metadata['_c'][AutoController::class])) {
                 self::handleAutoController($spec, $className, $metadata['_c'][AutoController::class], $reader);
             } elseif (isset($metadata['_c'][Resource::class])) {
-                self::handleResource($spec, $className, $metadata['_c'][Resource::class], $reader);
+                self::handleResource($spec, $className, $metadata['_c'][Resource::class], $reader, $metadata['_m'] ?? []);
             } elseif (isset($metadata['_c'][Controller::class])) {
                 self::handleController($spec, $className, $metadata, $reader);
             }
@@ -80,7 +83,9 @@ class Generator
     {
         $spec = self::generate($config);
         file_put_contents($filePath,
-            json_encode($spec, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            json_encode($spec,
+                JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR
+            ),
             LOCK_EX
         );
     }
@@ -112,7 +117,7 @@ class Generator
 
                 foreach ($httpMethods as $method) {
                     $spec['paths'][$path][strtolower($method)] = self::buildOperation(
-                        $className, $methodName, $mapping, $reader
+                        $className, $methodName, $mapping, $reader, $attrs
                     );
                 }
             }
@@ -124,6 +129,7 @@ class Generator
     {
         $prefix = self::getPrefix($className, $controller->prefix);
         $httpMethods = $controller->options['methods'] ?? ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS'];
+        $methodMeta = AttributeCollector::get($className . '._m') ?? [];
 
         try {
             $ref = ReflectionManager::reflectClass($className);
@@ -140,7 +146,8 @@ class Generator
 
                 foreach ($httpMethods as $httpMethod) {
                     $spec['paths'][$path][strtolower($httpMethod)] = self::buildOperation(
-                        $className, $methodName, null, $reader
+                        $className, $methodName, null, $reader,
+                        $methodMeta[$methodName] ?? []
                     );
                 }
             }
@@ -161,7 +168,7 @@ class Generator
     ];
 
     /** #[Resource] — RESTful 资源路由 */
-    private static function handleResource(array &$spec, string $className, Resource $resource, PhpDocReader $reader): void
+    private static function handleResource(array &$spec, string $className, Resource $resource, PhpDocReader $reader, array $methodMeta): void
     {
         $prefix  = self::getPrefix($className, $resource->prefix);
         $options = $resource->options['methods'] ?? [];
@@ -182,7 +189,7 @@ class Generator
                 $spec['paths'][$path] = [];
             }
 
-            $op = self::buildOperation($className, $action, null, $reader);
+            $op = self::buildOperation($className, $action, null, $reader, $methodMeta[$action] ?? []);
             // 为 {id} 路由自动添加 path 参数
             if (str_contains($suffix, '{id}')) {
                 $op['parameters'] = array_merge(
@@ -198,17 +205,30 @@ class Generator
 
     /** 构建 OpenAPI Operation 对象 */
     private static function buildOperation(
-        string $className, string $methodName, ?Mapping $mapping, PhpDocReader $reader
+        string $className, string $methodName, ?Mapping $mapping, PhpDocReader $reader, array $methodAttrs = []
     ): array {
+        $classMeta = AttributeCollector::get($className);
+        // 方法级 #[Tag] > 类级 #[Tag] > 自动推导
+        $tag = $methodAttrs[Tag::class]->value
+            ?? $classMeta['_c'][Tag::class]->value
+            ?? self::extractTag($className);
+
         $op = [
             'operationId' => $className . '.' . $methodName,
-            'tags'        => [self::extractTag($className)],
+            'tags'        => [$tag],
             'responses'   => ['200' => ['description' => 'Successful response']],
         ];
 
-        // 从 Mapping 读取 summary（仅 Controller 场景）
-        if ($mapping !== null && ! empty($mapping->options['summary'] ?? null)) {
+        // #[Summary] 覆盖
+        if (isset($methodAttrs[Summary::class])) {
+            $op['summary'] = $methodAttrs[Summary::class]->value;
+        } elseif ($mapping !== null && ! empty($mapping->options['summary'] ?? null)) {
             $op['summary'] = $mapping->options['summary'];
+        }
+
+        // #[Description] 覆盖
+        if (isset($methodAttrs[Description::class])) {
+            $op['description'] = $methodAttrs[Description::class]->value;
         }
 
         // Parameters from PHPDoc @param
@@ -227,12 +247,14 @@ class Generator
                 ];
             }
 
-            // Description from docblock summary
-            $docComment = $refMethod->getDocComment();
-            if ($docComment) {
-                $desc = self::parseDocSummary($docComment);
-                if ($desc) {
-                    $op['description'] = $desc;
+            // Description from docblock summary (仅当未显式设置时)
+            if (! isset($op['description'])) {
+                $docComment = $refMethod->getDocComment();
+                if ($docComment) {
+                    $desc = self::parseDocSummary($docComment);
+                    if ($desc) {
+                        $op['description'] = $desc;
+                    }
                 }
             }
         } catch (\ReflectionException) {
@@ -241,6 +263,15 @@ class Generator
 
         return $op;
     }
+
+    /** 框架内部类型，不作为 OpenAPI 参数暴露 */
+    private const FRAMEWORK_TYPES = [
+        'support\Request',
+        'Webman\Http\Request',
+        'Webman\Http\Response',
+        'support\Response',
+        'Workerman\Connection\TcpConnection',
+    ];
 
     /** 从 PHPDoc @param 构建 OpenAPI Parameters */
     private static function buildParameters(ReflectionMethod $refMethod, PhpDocReader $reader): array
@@ -253,6 +284,18 @@ class Generator
                 $type = null;
             }
 
+            // 跳过框架注入类型（Request、Response 等）
+            if ($type !== null && self::isFrameworkType($type)) {
+                continue;
+            }
+
+            // 反射类型也检查
+            $refType = $param->getType();
+            if ($refType instanceof \ReflectionNamedType && !$refType->isBuiltin() &&
+                self::isFrameworkType($refType->getName())) {
+                continue;
+            }
+
             $schema = $type ? self::typeToSchema($type) : ['type' => 'string'];
             $params[] = [
                 'name'     => $param->getName(),
@@ -262,6 +305,22 @@ class Generator
             ];
         }
         return $params;
+    }
+
+    /** 判断类型是否为框架注入类型（不应出现在 API 文档中） */
+    private static function isFrameworkType(string $typeName): bool
+    {
+        $typeName = ltrim($typeName, '\\?');
+        foreach (self::FRAMEWORK_TYPES as $ft) {
+            if ($typeName === $ft || str_ends_with($typeName, '\\' . $ft)) {
+                return true;
+            }
+            // 反射类型仅返回短名（如 Request），也需匹配
+            if (str_ends_with($ft, '\\' . $typeName) || basename(str_replace('\\', '/', $ft)) === $typeName) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** 解析 @return 类型 */
@@ -301,7 +360,7 @@ class Generator
         } elseif (str_ends_with($type, '[]')) {
             $schema['type'] = 'array';
             $schema['items'] = self::typeToSchema(substr($type, 0, -2));
-        } elseif (class_exists($type) || interface_exists($type)) {
+        } elseif ((class_exists($type) || interface_exists($type)) && ! self::isFrameworkType($type)) {
             $schema = ['$ref' => '#/components/schemas/' . self::shortName($type)];
         } else {
             $schema['type'] = 'string';

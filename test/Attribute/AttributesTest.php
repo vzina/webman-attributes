@@ -573,8 +573,9 @@ class AttributesTest extends TestCase
 
         $this->assertEquals(3, $r->maxAttempts);
         $this->assertEquals(100, $r->delayMs);
-        $this->assertSame(1.0, $r->backoff);
+        $this->assertSame(2.0, $r->backoff);
         $this->assertEmpty($r->on);
+        $this->assertEquals('exponential', $r->strategy);
     }
 
     public function testRetryCustomValues(): void
@@ -768,6 +769,8 @@ class AttributesTest extends TestCase
                     public function setAttribute(string $key, mixed $value): void {}
                     public function applyTraceparent(?string $tp): void {}
                     public function getTraceparent(): ?string { return null; }
+                    public function addEvent(string $name, array $attrs = []): void {}
+                    public function recordException(\Throwable $e): void {}
                 };
             }
         };
@@ -795,6 +798,8 @@ class AttributesTest extends TestCase
                     public function setAttribute(string $key, mixed $value): void {}
                     public function applyTraceparent(?string $tp): void {}
                     public function getTraceparent(): ?string { return null; }
+                    public function addEvent(string $name, array $attrs = []): void {}
+                    public function recordException(\Throwable $e): void {}
                 };
             }
         };

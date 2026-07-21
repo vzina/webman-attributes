@@ -2,14 +2,13 @@
 /**
  * Span — 当前追踪 span 操作入口。
  *
- * 在 #[Trace] 标记的方法内部调用，向当前 span 写入自定义属性。
+ * 在 #[Trace] 标记的方法内部调用，提供 span 属性的读写能力。
  *
- *   Span::setAttribute('order_id', $order->id);
- *   Span::setAttribute('amount', 99.9);
- *
- * 跨进程传播（从上游 traceparent header 恢复）：
- *
- *   Span::applyTraceparent($request->header('traceparent'));
+ *   写入属性：     Span::setAttribute('order_id', $order->id);
+ *   时间线事件：   Span::addEvent('cache.hit', ['key' => 'orders:42']);
+ *   异常记录：     Span::recordException($e);
+ *   跨进程传播：   Span::applyTraceparent($request->header('traceparent'));
+ *   向下游传递：   $header = Span::getTraceparent();
  */
 declare (strict_types=1);
 
@@ -35,6 +34,24 @@ class Span
         $tracer = self::resolve();
         if ($tracer !== null) {
             $tracer->applyTraceparent($traceparent);
+        }
+    }
+
+    /** 向当前 span 添加时间线事件 */
+    public static function addEvent(string $name, array $attrs = []): void
+    {
+        $tracer = self::resolve();
+        if ($tracer !== null) {
+            $tracer->addEvent($name, $attrs);
+        }
+    }
+
+    /** 向当前 span 记录异常事件 */
+    public static function recordException(\Throwable $e): void
+    {
+        $tracer = self::resolve();
+        if ($tracer !== null) {
+            $tracer->recordException($e);
         }
     }
 

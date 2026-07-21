@@ -17,6 +17,7 @@ use PhpParser\Node\Name;
 use PhpParser\Node\Stmt\TraitUse;
 use PhpParser\NodeVisitorAbstract;
 use ReflectionException;
+use Vzina\Attributes\Attribute\Inject;
 use Vzina\Attributes\Reflection\ReflectionManager;
 
 class AstPropertyVisitor extends NodeVisitorAbstract
@@ -57,9 +58,12 @@ class AstPropertyVisitor extends NodeVisitorAbstract
     {
         if ($node instanceof Node\Stmt\Class_ && ! $node->isAnonymous()) {
             if ($this->visitorMetadata->hasConstructor) {
+                // 构造器注入：在 __construct 体内首行插入 @Inject 参数解析
+                $ctorStmts = $this->visitorMetadata->constructorNode->stmts ?? [];
                 $this->visitorMetadata->constructorNode->stmts = array_merge(
+                    $this->buildConstructorInjection(),
                     [$this->buildMethodCallStatement()],
-                    $this->visitorMetadata->constructorNode->stmts,
+                    $ctorStmts,
                 );
                 $node->stmts = array_merge([$this->buildProxyTraitUseStatement()], $node->stmts);
             } else {
@@ -117,6 +121,59 @@ class AstPropertyVisitor extends NodeVisitorAbstract
         return new Node\Stmt\Expression(new Node\Expr\MethodCall(new Node\Expr\Variable('this'), '__handlePropertyHandler', [
             new Node\Arg(new Node\Scalar\MagicConst\Class_()),
         ]));
+    }
+
+    /**
+     * 生成 @Inject 构造器参数的容器解析代码。
+     *
+     * 对构造器参数中的 #[Inject] 属性，生成 \$param = Container::get(Class::class) 语句，
+     * 插入到代理类构造器体最前面，实现构造器级自动装配。
+     *
+     * @return Node\Stmt[] 容器解析表达式列表
+     */
+    protected function buildConstructorInjection(): array
+    {
+        $stmts = [];
+        $ref = ReflectionManager::reflectClass($this->visitorMetadata->className);
+
+        try {
+            $ctor = $ref->getMethod('__construct');
+            foreach ($ctor->getParameters() as $param) {
+                $injectAttr = null;
+                foreach ($param->getAttributes() as $attr) {
+                    if ($attr->getName() === Inject::class) {
+                        $injectAttr = $attr->newInstance();
+                        break;
+                    }
+                }
+                if (! $injectAttr instanceof Inject) {
+                    continue;
+                }
+
+                $paramName  = new Node\Expr\Variable($param->getName());
+                $targetName = $injectAttr->value;
+                if ($targetName === null && ($type = $param->getType()) instanceof \ReflectionNamedType) {
+                    $targetName = $type->getName();
+                }
+                if ($targetName === null) {
+                    continue;
+                }
+
+                // $paramName = \support\Container::get(Target::class);
+                $stmts[] = new Node\Stmt\Expression(new Node\Expr\Assign(
+                    $paramName,
+                    new Node\Expr\StaticCall(
+                        new Name\FullyQualified('support\Container'), 'get', [
+                            new Node\Arg(new Node\Expr\ClassConstFetch(new Name\FullyQualified($targetName), 'class')),
+                        ]
+                    )
+                ));
+            }
+        } catch (ReflectionException) {
+            // 无构造器，跳过
+        }
+
+        return $stmts;
     }
 
     /**

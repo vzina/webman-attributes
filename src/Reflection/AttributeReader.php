@@ -133,10 +133,18 @@ class AttributeReader
     /**
      * Parse PHP use statements from a file and return [shortName => FQCN] map.
      * Supports PHP 7.0+ grouped imports: use Foo\{Bar, Baz as Qux};
+     * Results are cached by file path with mtime validation.
      */
     private static function parseUseStatements(string $file): array
     {
-        $map = [];
+        static $cache = [];
+
+        $mtime = @filemtime($file);
+        if ($mtime !== false && isset($cache[$file]['mtime']) && $cache[$file]['mtime'] === $mtime) {
+            return $cache[$file]['map'];
+        }
+
+        $map    = [];
         $source = file_get_contents($file);
         if ($source === false) {
             return $map;
@@ -233,6 +241,10 @@ class AttributeReader
             if ($fqcn !== '') {
                 self::addUseStatement($map, $fqcn, $alias, $groupPrefix);
             }
+        }
+
+        if ($mtime !== false) {
+            $cache[$file] = ['mtime' => $mtime, 'map' => $map];
         }
 
         return $map;

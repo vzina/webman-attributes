@@ -2,10 +2,12 @@
 /**
  * Inject — 依赖注入注解。
  *
- * 在属性上标记需要从容器中注入的服务，支持懒加载代理模式。
- * 属性类型自动解析为服务类名，也可通过 $value 显式指定。
+ * 在属性或构造器参数上标记需要从容器中注入的服务。
+ * 属性：通过 AstPropertyVisitor 在构造时注入。
+ * 构造器参数：通过 AstPropertyVisitor 在构造器体内调用 Container::get() 解析。
+ * 支持懒加载代理模式，生成代理类延迟第一次访问时才解析。
  *
- * @param ?string $value   服务类名，默认从属性类型自动解析
+ * @param ?string $value   服务类名，默认从属性/参数类型自动解析
  * @param bool    $required 未找到服务时是否抛异常
  * @param bool    $lazy    懒加载模式，生成代理类延迟第一次访问时才解析
  */
@@ -19,7 +21,7 @@ use Throwable;
 use Vzina\Attributes\Ast\LazyLoader\LazyLoader;
 use Vzina\Attributes\Reflection\AttributeReader;
 
-#[Attribute(Attribute::TARGET_PROPERTY)]
+#[Attribute(Attribute::TARGET_PROPERTY | Attribute::TARGET_PARAMETER)]
 class Inject extends AbstractAttribute
 {
     public string $targetValue = '';

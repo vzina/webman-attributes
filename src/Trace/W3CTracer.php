@@ -4,7 +4,7 @@
  *
  * 生成符合规范的 32-hex traceId / 16-hex spanId，
  * 通过 support\Context 传播，支持 traceparent 头注入/提取。
- * 支持 Span::setAttribute() 写入自定义数据。
+ * 支持 Span::setAttribute / addEvent / recordException 写入自定义数据。
  */
 declare (strict_types=1);
 
@@ -15,8 +15,9 @@ use Vzina\Attributes\Attribute\TraceContext;
 
 class W3CTracer implements TracerContract
 {
-    private const CONTEXT_KEY = 'trace.ctx';
-    private const ATTRS_KEY   = 'trace.attrs';
+    private const CONTEXT_KEY   = 'trace.ctx';
+    private const ATTRS_KEY     = 'trace.attrs';
+    private const EVENTS_KEY    = 'trace.events';
 
     // ---- trace / span lifecycle ----
 
@@ -100,6 +101,34 @@ class W3CTracer implements TracerContract
         } catch (\Throwable $e) {
             error_log('[W3CTracer] setAttribute failed: ' . $e->getMessage());
         }
+    }
+
+    public function addEvent(string $name, array $attrs = []): void
+    {
+        $ctx = $this->currentContext();
+        if (! $ctx || ! class_exists(\support\Context::class)) {
+            return;
+        }
+        try {
+            $events = \support\Context::get(self::EVENTS_KEY, []);
+            $events[$ctx->spanId][] = [
+                'name'       => $name,
+                'timestamp'  => microtime(true),
+                'attributes' => $attrs,
+            ];
+            \support\Context::set(self::EVENTS_KEY, $events);
+        } catch (\Throwable $e) {
+            error_log('[W3CTracer] addEvent failed: ' . $e->getMessage());
+        }
+    }
+
+    public function recordException(\Throwable $e): void
+    {
+        $this->addEvent('exception', [
+            'message' => $e->getMessage(),
+            'code'    => $e->getCode(),
+            'class'   => get_class($e),
+        ]);
     }
 
     // ---- internal ----

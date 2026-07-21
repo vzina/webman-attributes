@@ -42,11 +42,14 @@ class CacheableAspect implements AspectInterface
             ? Redis::connection($storeCfg['connection'] ?? 'default') : null;
 
         $collectKey = $attr->collect ? $prefix . 'MEMBERS' : null;
-        $cache      = Cache::store($group);
+        $tags       = $attr->tags;
+        $cache      = $tags ? Cache::tags($tags) : Cache::store($group);
 
         // 缓存清除模式
         if ($attr->evict) {
-            if ($collectKey && $redis) {
+            if ($tags) {
+                $cache->flush();
+            } elseif ($collectKey && $redis) {
                 $cache->deleteMultiple((array) $redis->sMembers($collectKey));
                 $redis->del($collectKey);
             } else {

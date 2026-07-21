@@ -473,10 +473,27 @@ return [
 |---|---|---|---|
 | `spanName` | `?string` | `null` | span 名称，null 时自动 `ClassName::methodName` |
 
-### 16. OpenAPI Generator
+### 16. OpenAPI Generator + Swagger UI
 
 ```bash
 php webman attributes:openapi --output=public/openapi.json
+```
+
+启动后访问 `http://localhost:8787/openapi` 即可使用交互式 Swagger UI。
+
+生产环境可关闭路由，改用命令行导出：
+```bash
+# 生产关闭路由，仅导出静态文件
+php webman attributes:openapi --output=public/openapi.json
+```
+
+**配置开关**（`config/plugin/vzina/attributes/app.php`）：
+```php
+'openapi' => [
+    'enable'  => true,                    // 注册 /openapi 路由
+    'title'   => 'API Documentation',     // 文档标题
+    'version' => '1.0.0',                 // API 版本
+],
 ```
 
 扫描 `#[Controller]` + 路由注解 → OpenAPI 3.0 JSON。

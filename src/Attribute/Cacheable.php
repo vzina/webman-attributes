@@ -14,6 +14,7 @@
  * @param bool    $collect      收集 key 到 Redis SET（需 redis 驱动）
  * @param bool    $evict        清除模式：删缓存后执行方法
  * @param bool    $put          仅写入模式：跳过缓存读取直接执行并缓存
+ * @param array   $tags         缓存标签组，用于批量清除关联缓存（需 tag 驱动的 cache store）
  */
 declare (strict_types=1);
 
@@ -35,6 +36,7 @@ class Cacheable extends AbstractAttribute
         public bool $collect = false,
         public bool $evict = false,
         public bool $put = false,
+        public array $tags = [],
     ) {
     }
 }

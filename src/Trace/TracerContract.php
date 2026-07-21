@@ -3,6 +3,7 @@
  * TracerContract — 追踪器接口。
  *
  * 实现此接口即可替换默认 W3C 追踪器，或扩展为 OpenTelemetry、Jaeger 等。
+ * 提供 span 生命周期管理、属性写入、时间线事件、异常记录和 W3C traceparent 传播。
  */
 declare (strict_types=1);
 
@@ -20,6 +21,12 @@ interface TracerContract
 
     /** 向当前 span 写入自定义属性 */
     public function setAttribute(string $key, mixed $value): void;
+
+    /** 向当前 span 添加时间线事件（如 cache.hit、db.query 等） */
+    public function addEvent(string $name, array $attrs = []): void;
+
+    /** 向当前 span 记录异常 */
+    public function recordException(\Throwable $e): void;
 
     /** 从 traceparent header 应用上游追踪上下文（W3C Trace Context） */
     public function applyTraceparent(?string $traceparent): void;

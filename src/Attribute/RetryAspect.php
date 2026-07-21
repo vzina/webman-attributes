@@ -42,8 +42,10 @@ class RetryAspect implements AspectInterface
                 if ($delay > 0) {
                     usleep(min($delay, self::MAX_DELAY_MS) * 1000);
                 }
-                // 指数退避 + 随机抖动，上限防溢出
-                $delay = min((int) round($delay * $attr->backoff + random_int(0, 100)), self::MAX_DELAY_MS);
+                // 退避策略 + 随机抖动，上限防溢出
+                $delay = $attr->strategy === 'linear'
+                    ? min((int) ($delay + $attr->backoff * 1000 + random_int(0, 100)), self::MAX_DELAY_MS)
+                    : min((int) round($delay * $attr->backoff + random_int(0, 100)), self::MAX_DELAY_MS);
             }
         }
     }

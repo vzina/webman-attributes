@@ -14,6 +14,8 @@ namespace Vzina\Attributes\Attribute;
 
 class LaravelValidator implements ValidatorContract
 {
+    /** @var \Illuminate\Validation\Factory|null 校验器工厂单例 */
+    private static ?\Illuminate\Validation\Factory $factory = null;
 
     public function __invoke(array $data, array $rules, array $messages): array
     {
@@ -23,9 +25,12 @@ class LaravelValidator implements ValidatorContract
             );
         }
 
-        $loader    = new \Illuminate\Translation\ArrayLoader();
-        $translator = new \Illuminate\Translation\Translator($loader, 'en');
-        $factory   = new \Illuminate\Validation\Factory($translator);
+        $factory = self::$factory ??= (function () {
+            $loader     = new \Illuminate\Translation\ArrayLoader();
+            $translator = new \Illuminate\Translation\Translator($loader, 'en');
+            return new \Illuminate\Validation\Factory($translator);
+        })();
+
         $validator = $factory->make($data, $rules, $messages);
 
         if ($validator->fails()) {
