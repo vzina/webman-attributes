@@ -585,21 +585,35 @@ php webman app:greet
 
 ### 18. 属性调试命令 (`attributes:list`)
 
+
 ```bash
 # 列出所有已扫描类的注解
 php webman attributes:list
 
-# 过滤指定类
-php webman attributes:list --class=UserController
+# 过滤指定类（支持部分匹配）
+php webman attributes:list -c UserController
 
 # 过滤指定注解类型
-php webman attributes:list --type=Inject
+php webman attributes:list -t Inject
+
+# 详细模式：展示注解参数值
+php webman attributes:list -c UserController -v
+
+# JSON 输出（供脚本使用）
+php webman attributes:list --format=json
+
+# 仅显示每个类的注解计数
+php webman attributes:list --count
 ```
 
 | 选项 | 简写 | 说明 |
 |---|---|---|
 | `--class` | `-c` | 按类名过滤（支持部分匹配） |
-| `--type` | `-t` | 按注解类型过滤（如 Inject、Cacheable） |
+| `--type` | `-t` | 按注解类型过滤 |
+| `--method` | `-m` | 按方法名过滤 |
+| `--format` | | 输出格式：`table`（默认）| `json` |
+| `--count` | | 仅显示每个类的注解计数 |
+| `-v` | | 详细模式：展示注解构造函数参数值 |
 
 ---
 
