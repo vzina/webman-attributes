@@ -460,7 +460,15 @@ public function checkout(int $orderId): Order
     Span::setAttribute('order_id', $orderId);
     Span::setAttribute('amount', 99.9);
 
-    return $this->service->checkout($orderId);
+    // 添加时间线事件（cache.hit、db.query 等）
+    Span::addEvent('inventory.check', ['sku' => 'P001']);
+
+    try {
+        return $this->service->checkout($orderId);
+    } catch (\Throwable $e) {
+        Span::recordException($e);
+        throw $e;
+    }
 }
 ```
 
