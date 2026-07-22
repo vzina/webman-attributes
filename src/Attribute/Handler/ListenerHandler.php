@@ -38,7 +38,7 @@ class ListenerHandler implements Bootstrap
             // @var array $listener ['class' => $class, 'method' => $method, 'attribute' => $value]
             /** @var Listener $attribute */
             $attribute = $listener['attribute'];
-            if ($instance = $container->get($listener['class'])) {
+            if (($instance = $container->get($listener['class'])) !== null) {
                 $events = (array)$attribute->event;
                 if (method_exists($instance, 'listen')) {
                     $events = $instance->listen();

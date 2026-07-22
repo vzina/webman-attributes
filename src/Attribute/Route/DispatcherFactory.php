@@ -154,7 +154,7 @@ class DispatcherFactory
      * - '' :   从类命名空间自动推导
      * - 其他:  直接使用，缺失前导 / 时自动补
      */
-    protected static function getPrefix(string $className, ?string $prefix): string
+    public static function getPrefix(string $className, ?string $prefix): string
     {
         if ($prefix === null) {
             return '';

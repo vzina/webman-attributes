@@ -2,8 +2,8 @@
 /**
  * TransactionalAspect — 数据库事务切面。
  *
- * 拦截 @Transactional 方法，包裹数据库事务。内置 handler 尝试
- * illuminate/database DB；用户可通过 Transactional(transactionHandler: $fn) 注入自定义实现。
+ * 拦截 @Transactional 方法，包裹数据库事务。支持死锁重试。
+ * 事务处理器：容器 TransactionHandlerContract → LaravelTransactionHandler 默认。
  */
 declare (strict_types=1);
 
@@ -12,11 +12,15 @@ namespace Vzina\Attributes\Attribute\Aspect;
 use Closure;
 use Vzina\Attributes\Ast\ProceedingJoinPoint;
 use Vzina\Attributes\Attribute\Annotation\Transactional;
+use Vzina\Attributes\Attribute\Contract\TransactionHandlerContract;
+use Vzina\Attributes\Attribute\Default\LaravelTransactionHandler;
 use Vzina\Attributes\Attribute\AspectInterface;
+use Vzina\Attributes\Attribute\DebugLog;
 
 class TransactionalAspect implements AspectInterface
 {
-    /** @var array<Transactional> */
+    use DebugLog;
+
     public array $attributes = [Transactional::class];
 
     public function process(ProceedingJoinPoint $point)
@@ -27,65 +31,58 @@ class TransactionalAspect implements AspectInterface
             return $point->process();
         }
 
-        $execute = function () use ($point) {
-            return $point->process();
-        };
-
-        return $this->runTransaction($attr->connection, $execute, $attr->attempts, $attr->transactionHandler);
+        $execute = fn() => $point->process();
+        return $this->runTransaction($attr->connection, $execute, $attr->attempts);
     }
 
-    /** 执行事务，支持死锁重试 */
-    private function runTransaction(string $connection, Closure $callback, int $attempts, $transactionHandler = null): mixed
+    private function runTransaction(string $connection, Closure $callback, int $attempts): mixed
     {
+        $handler = $this->resolveHandler();
+
         for ($attempt = 1; $attempt <= $attempts; $attempt++) {
             try {
-                return $this->executeTransaction($connection, $callback, $transactionHandler);
+                return $handler($connection, $callback);
             } catch (\Throwable $e) {
-                if ($attempt >= $attempts || ! $this->isDeadlock($e)) {
-                    throw $e;
-                }
+                if ($attempt >= $attempts || ! $this->isDeadlock($e)) throw $e;
                 usleep(random_int(10000, 100000));
             }
         }
 
-        return null; // unreachable, satisfies static analysis
+        return null;
     }
 
-    /** 执行单次事务 */
-    private function executeTransaction(string $connection, Closure $callback, $transactionHandler = null): mixed
+    protected function resolveHandler(): TransactionHandlerContract
     {
-        $handler = $transactionHandler && is_callable($transactionHandler) ? $transactionHandler : $this->defaultHandler();
-        return $handler($connection, $callback);
-    }
-
-    /** 内置事务处理器：尝试 illuminate/database DB */
-    private function defaultHandler(): Closure
-    {
-        return static function (string $connection, Closure $callback) {
-            if (! class_exists(\Illuminate\Support\Facades\DB::class)) {
-                throw new \RuntimeException(
-                    'TransactionalAspect requires illuminate/database. Install it or pass a transactionHandler to the #[Transactional] attribute.'
-                );
+        if (class_exists(\support\Container::class)) {
+            try {
+                $handler = \support\Container::get(TransactionHandlerContract::class);
+            } catch (\Throwable $e) {
+                $this->log('[TransactionalAspect] Container::get(TransactionHandlerContract) failed: ' . $e->getMessage());
+                $handler = null;
             }
-            return \Illuminate\Support\Facades\DB::connection($connection)->transaction($callback);
-        };
+            if ($handler instanceof TransactionHandlerContract) return $handler;
+        }
+        return new LaravelTransactionHandler();
     }
 
-    /** 判断是否为死锁异常 */
+
+    private static function containsAny(string $haystack, array $needles): bool {
+        foreach ($needles as $n) { if (str_contains($haystack, $n)) return true; }
+        return false;
+    }
     private function isDeadlock(\Throwable $e): bool
     {
-        $code   = $e->getCode();
-        $msg    = $e->getMessage();
-        $prev   = $e->getPrevious();
+        $code     = $e->getCode();
+        $msg      = $e->getMessage();
+        $prev     = $e->getPrevious();
         $prevCode = $prev ? $prev->getCode() : null;
 
-        // MySQL error 1213, PostgreSQL error 40P01, SQLite error 5
         $codes  = [1213, '40001', '40P01', 'SQLITE_BUSY', 5];
         $needle = ['deadlock', 'Deadlock', 'try restarting transaction', 'database is locked'];
 
         return in_array($code, $codes, true)
             || in_array($prevCode, $codes, true)
-            || str_contains($msg, ...$needle)
-            || ($prev && str_contains($prev->getMessage(), ...$needle));
+            || self::containsAny($msg, $needle)
+            || ($prev && self::containsAny($prev->getMessage(), $needle));
     }
 }

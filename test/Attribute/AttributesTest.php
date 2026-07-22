@@ -29,6 +29,7 @@ use Vzina\Attributes\Trace\TracerContract;
 use Vzina\Attributes\Trace\W3CTracer;
 use Vzina\Attributes\Attribute\Annotation\Transactional;
 use Vzina\Attributes\Attribute\Aspect\TransactionalAspect;
+use Vzina\Attributes\Attribute\Contract\TransactionHandlerContract;
 use Vzina\Attributes\Attribute\Annotation\Validate;
 use Vzina\Attributes\Attribute\Aspect\ValidateAspect;
 use Vzina\Attributes\Attribute\Annotation\Command;
@@ -367,18 +368,27 @@ class AttributesTest extends TestCase
     {
         $committed = false;
 
-        $handler = static function (string $conn, \Closure $cb) use (&$committed) {
-            $result = $cb();
-            $committed = true;
-            return $result;
+        $aspect = new class($committed) extends TransactionalAspect {
+            private bool $flag;
+            public function __construct(bool &$flag) { $this->flag = &$flag; }
+            protected function resolveHandler(): TransactionHandlerContract {
+                return new class($this->flag) implements TransactionHandlerContract {
+                    private bool $flag;
+                    public function __construct(bool &$flag) { $this->flag = &$flag; }
+                    public function __invoke(string $connection, \Closure $callback): mixed {
+                        $result = $callback();
+                        $this->flag = true;
+                        return $result;
+                    }
+                };
+            }
         };
 
         AttributeCollector::collectMethod(
             'TestClass', 'testMethod', Transactional::class,
-            new Transactional(transactionHandler: $handler)
+            new Transactional()
         );
 
-        $aspect = new TransactionalAspect();
         $point  = $this->createJoinPoint(fn() => 'success');
         $result = $aspect->process($point);
 
@@ -390,21 +400,30 @@ class AttributesTest extends TestCase
     {
         $rollbacked = false;
 
-        $handler = static function (string $conn, \Closure $cb) use (&$rollbacked) {
-            try {
-                return $cb();
-            } catch (\Throwable) {
-                $rollbacked = true;
-                throw new \RuntimeException('rolled back');
+        $aspect = new class($rollbacked) extends TransactionalAspect {
+            private bool $flag;
+            public function __construct(bool &$flag) { $this->flag = &$flag; }
+            protected function resolveHandler(): TransactionHandlerContract {
+                return new class($this->flag) implements TransactionHandlerContract {
+                    private bool $flag;
+                    public function __construct(bool &$flag) { $this->flag = &$flag; }
+                    public function __invoke(string $connection, \Closure $callback): mixed {
+                        try {
+                            return $callback();
+                        } catch (\Throwable) {
+                            $this->flag = true;
+                            throw new \RuntimeException('rolled back');
+                        }
+                    }
+                };
             }
         };
 
         AttributeCollector::collectMethod(
             'TestClass', 'testMethod', Transactional::class,
-            new Transactional(transactionHandler: $handler)
+            new Transactional()
         );
 
-        $aspect = new TransactionalAspect();
         $point  = $this->createJoinPoint(fn() => throw new \InvalidArgumentException('boom'));
 
         $this->expectException(\RuntimeException::class);
@@ -417,24 +436,39 @@ class AttributesTest extends TestCase
         $attempts  = 0;
         $committed = false;
 
-        $handler = static function (string $conn, \Closure $cb) use (&$attempts, &$committed) {
-            $attempts++;
-            if ($attempts < 3) {
-                $e = new \PDOException('SQLSTATE[40001]: Serialization failure: 1213 Deadlock found');
-                $e->errorInfo = [null, '40001'];
-                throw new \RuntimeException('Deadlock', 1213, $e);
+        $aspect = new class($attempts, $committed) extends TransactionalAspect {
+            private int $attempts;
+            private bool $flag;
+            public function __construct(int &$attempts, bool &$flag) {
+                $this->attempts = &$attempts;
+                $this->flag = &$flag;
             }
-            $result = $cb();
-            $committed = true;
-            return $result;
+            protected function resolveHandler(): TransactionHandlerContract {
+                return new class($this->attempts, $this->flag) implements TransactionHandlerContract {
+                    private int $attempts;
+                    private bool $flag;
+                    public function __construct(int &$attempts, bool &$flag) {
+                        $this->attempts = &$attempts;
+                        $this->flag = &$flag;
+                    }
+                    public function __invoke(string $connection, \Closure $callback): mixed {
+                        $this->attempts++;
+                        if ($this->attempts < 3) {
+                            throw new \RuntimeException('Deadlock', 1213);
+                        }
+                        $result = $callback();
+                        $this->flag = true;
+                        return $result;
+                    }
+                };
+            }
         };
 
         AttributeCollector::collectMethod(
             'TestClass', 'testMethod', Transactional::class,
-            new Transactional(attempts: 3, transactionHandler: $handler)
+            new Transactional(attempts: 3)
         );
 
-        $aspect = new TransactionalAspect();
         $point  = $this->createJoinPoint(fn() => 'retry_success');
         $result = $aspect->process($point);
 

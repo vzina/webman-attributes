@@ -360,22 +360,7 @@ class Generator
     /** 构建路由前缀，与 DispatcherFactory::getPrefix 逻辑一致 */
     private static function getPrefix(string $className, ?string $prefix): string
     {
-        if ($prefix === null) {
-            return '';
-        }
-
-        if ($prefix === '') {
-            $handledNamespace = str_replace('\\', '/', \Illuminate\Support\Str::replaceFirst(
-                'Controller', '', \Illuminate\Support\Str::after($className, '\\Controller\\')
-            ));
-            $prefix = str_replace('/_', '/', \Illuminate\Support\Str::snake($handledNamespace));
-        }
-
-        if ($prefix !== '' && $prefix[0] !== '/') {
-            $prefix = '/' . $prefix;
-        }
-
-        return $prefix;
+        return \Vzina\Attributes\Attribute\Route\DispatcherFactory::getPrefix($className, $prefix);
     }
 
     private static function buildPath(string $prefix, ?string $mappingPath, string $methodName): string
